@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "UK Prepper Hub Alerts",
+        "description": "Met Office weather warnings for your region, Environment Agency flood warnings near your home (England only), and the UK Prepper Hub daily news. Flood warnings use the home location set in Home Assistant, rounded to about 1 km.",
+        "data": {
+          "met_office_region": "Met Office warning region",
+          "flood_radius_km": "Flood warning search radius"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "UK Prepper Hub Alerts is already set up.",
+      "single_instance_allowed": "UK Prepper Hub Alerts is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UK Prepper Hub Alerts",
+        "data": {
+          "met_office_region": "Met Office warning region",
+          "flood_radius_km": "Flood warning search radius"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "met_office_warnings": { "name": "Met Office warnings" },
+      "met_office_highest_level": {
+        "name": "Met Office highest warning",
+        "state": { "none": "None", "yellow": "Yellow", "amber": "Amber", "red": "Red" }
+      },
+      "flood_warnings": { "name": "Flood warnings nearby" },
+      "flood_highest_severity": {
+        "name": "Flood highest severity",
+        "state": {
+          "none": "None",
+          "flood_alert": "Flood alert",
+          "flood_warning": "Flood warning",
+          "severe_flood_warning": "Severe flood warning"
+        }
+      },
+      "daily_news": { "name": "Daily news" }
+    }
+  }
+}

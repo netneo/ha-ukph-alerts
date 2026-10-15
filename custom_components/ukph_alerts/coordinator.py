@@ -50,6 +50,11 @@ class UkphData:
     floods: UkphCoordinator
     news: UkphCoordinator
     rivers: UkphCoordinator
+    threat: UkphCoordinator
+    grid: UkphCoordinator
+    power: UkphCoordinator
+    health: UkphCoordinator
+    home: dict
 
 
 type UkphConfigEntry = ConfigEntry[UkphData]

@@ -5,6 +5,10 @@ import sys
 
 from custom_components.ukph_alerts.api import (
     add_utm,
+    parse_grid,
+    parse_sepa_floods,
+    parse_threat,
+    irish_grid_to_wgs84,
     parse_river_readings,
     parse_river_stations,
     river_status,
@@ -139,6 +143,46 @@ def test_river_trend():
     r = parse_river_readings({"items": [{"dateTime": d, "value": 0.9} for d in t]}, st)
     assert r["trend"] == "steady" and r["status"] == "normal"
     assert parse_river_readings({"items": []}, st)["level"] is None
+
+
+def test_threat():
+    xml = ("<rss><channel><item><title>Current Threat Level: SEVERE</title><description>&lt;p&gt;The current national "
+           "threat level is SEVERE. &amp;nbsp;The threat to Northern Ireland from Northern Ireland-related terrorism is "
+           "SUBSTANTIAL.&lt;/p&gt;</description><pubDate>Thursday, April 30, 2026 - 06:09</pubDate></item></channel></rss>")
+    t = parse_threat(xml)
+    assert t["level"] == "severe" and t["ni_level"] == "substantial"
+
+
+def test_grid():
+    issued = ("From : Power System Manager ELECTRICITY MARGIN NOTICE An ELECTRICITY MARGIN NOTICE has been issued ... "
+              "For the period: from 16:00 hrs to 23:00 hrs on Tuesday   06/10/2026   There is a reduced margin")
+    cancelled = ("NOTIFICATION CANCELLATION of GB TRANSMISSION SYSTEM WARNING The GB Transmission System Warning "
+                 "ELECTRICITY MARGIN NOTICE issued for the period from  16:00 hrs to 23:00 hrs on Tuesday   06/10/2026 has been cancelled")
+    assist = ("A request for Emergency Assistance has been agreed on a GB connected Interconnector. GB net flow will "
+              "increase by 700 MW between 16:52 12/10/2026 to 18:00 12/10/2026.")
+    noise = {"warningType": "SO-SO TRADES", "warningText": "prices", "publishTime": "2026-10-06T10:00:00Z"}
+    emn = {"warningType": "ELECTRICITY MARGIN NOTICE", "warningText": issued, "publishTime": "2026-10-06T11:00:00Z"}
+    during = datetime(2026, 10, 6, 17, 0, tzinfo=UTC)  # 18:00 BST, inside the 16:00-23:00 window
+    g = parse_grid({"data": [noise, emn]}, during)
+    assert g["status"] == "margin_notice" and len(g["active"]) == 1 and "16:00" in g["active"][0]["summary"]
+    g = parse_grid({"data": [emn, {"warningType": "ELECTRICITY MARGIN NOTICE", "warningText": cancelled,
+                                   "publishTime": "2026-10-06T14:51:00Z"}]}, during)
+    assert g["status"] == "normal" and g["recent"][0]["cancelled"]
+    g = parse_grid({"data": [{"warningType": "OTHER", "warningText": assist, "publishTime": "2026-10-12T15:49:00Z"}]},
+                   datetime(2026, 10, 12, 16, 0, tzinfo=UTC))
+    assert g["status"] == "normal" and "700 MW" in g["active"][0]["summary"]  # informative, not a warning
+
+
+def test_sepa_floods():
+    f = [{"attributes": {"name": "River Tay at Perth", "severity": "Flood Warning", "message": "<p>Act now</p>", "id": 7}},
+         {"attributes": {"name": "Tayside", "severity": None, "id": 8}}]
+    w = parse_sepa_floods(f, 3)
+    assert [x["severity"] for x in w] == ["flood_warning", "flood_alert"] and w[0]["message"] == "Act now"
+
+
+def test_irish_grid():
+    lat, lon = irish_grid_to_wgs84(333500, 373500)  # central Belfast
+    assert abs(lat - 54.6) < 0.02 and abs(lon + 5.93) < 0.02
 
 
 async def live():

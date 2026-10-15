@@ -6,6 +6,11 @@ const LEVEL_COLOURS = {
 };
 const RIVER_COLOURS = { very_high: "#d32f2f", high: "#f57c00", normal: "#43a047", low: "#1e88e5" };
 const RIVER_LABELS = { very_high: "Very high", high: "High", normal: "Normal", low: "Low" };
+const THREAT_COLOURS = { low: "#43a047", moderate: "#c0ca33", substantial: "#f57c00", severe: "#e64a19", critical: "#d32f2f" };
+const HEALTH_COLOURS = { yellow: "#fbc02d", amber: "#f57c00", red: "#d32f2f" };
+const GRID_LABELS = { normal: "Normal", margin_notice: "Margin notice", high_risk: "High risk of demand reduction", demand_control: "Demand control" };
+const GRID_COLOURS = { margin_notice: "#fbc02d", high_risk: "#f57c00", demand_control: "#d32f2f" };
+const cap = (t) => String(t || "").replace(/^./, (c) => c.toUpperCase());
 const TREND_ARROWS = { rising: "▲", falling: "▼", steady: "▶" };
 const LEVEL_LABELS = {
   none: "None", yellow: "Yellow", amber: "Amber", red: "Red",
@@ -44,7 +49,7 @@ class UkphAlertsPanel extends HTMLElement {
 
   _render() {
     if (!this._hass || !this._panel) return;
-    const keys = ["met_office_warnings", "met_office_highest_level", "flood_warnings", "flood_highest_severity", "rivers_above_normal", "daily_news"];
+    const keys = ["met_office_warnings", "met_office_highest_level", "flood_warnings", "flood_highest_severity", "rivers_above_normal", "power_cuts_nearby", "heat_health_alert", "cold_health_alert", "threat_level", "grid_status", "daily_news"];
     // hass updates many times a second; only redraw when one of our sensors actually changed.
     const sig = keys.map((k) => this._entity(k)?.last_updated).join("|") + this._hass.themes?.darkMode;
     if (sig === this._sig) return;
@@ -61,7 +66,7 @@ class UkphAlertsPanel extends HTMLElement {
     this._menu.hass = this._hass;
     this._menu.narrow = this._narrow;
     this.shadowRoot.querySelector(".content").innerHTML = `
-      <div class="col">${this._warnings()}</div>
+      <div class="col"><div class="section">Local</div>${this._warnings()}<div class="section">National</div>${this._national()}</div>
       <div class="col">${this._news()}</div>`;
   }
 
@@ -120,6 +125,8 @@ class UkphAlertsPanel extends HTMLElement {
         ${this._badge("Met Office", moLevel?.state)}
         ${this._badge("Floods nearby", flLevel?.state)}
         ${this._badge("Rivers", null, this._riverBadge())}
+        ${this._badge("Power cuts", null, this._powerBadge())}
+        ${this._healthBadge()}
       </div>
       <div class="card">
         <h2>Met Office warnings${region ? `: ${esc(region)}` : ""}</h2>
@@ -127,11 +134,89 @@ class UkphAlertsPanel extends HTMLElement {
         <h2>Flood warnings${radius ? ` within ${esc(Math.round(radius))} km` : ""}</h2>
         ${flHtml}
         ${this._rivers()}
+        ${this._power()}
+        ${this._healthSection()}
         <div class="footer">
           <a href="${settings}">Change region, radius or alerts</a>
           <span>${esc(mo?.attributes?.attribution || "")}${fl?.attributes?.attribution ? ` · ${esc(fl.attributes.attribution)}` : ""}</span>
         </div>
       </div>`;
+  }
+
+  _powerBadge() {
+    const p = this._entity("power_cuts_nearby");
+    if (this._unavailable(p)) return { text: (p?.attributes?.networks || []).length === 0 && p ? "Not covered yet" : "Unavailable" };
+    const n = Number(p.state);
+    return n ? { text: `${n} nearby`, colour: "#f57c00" } : { text: "None nearby" };
+  }
+
+  _healthBadge() {
+    const heat = this._entity("heat_health_alert"), cold = this._entity("cold_health_alert");
+    if (this._unavailable(heat) && this._unavailable(cold)) return "";
+    const order = ["green", "yellow", "amber", "red"];
+    const worst = [heat, cold].filter((e) => !this._unavailable(e)).sort((a, b) => order.indexOf(b.state) - order.indexOf(a.state))[0];
+    const which = worst === heat ? "Heat" : "Cold";
+    const colour = HEALTH_COLOURS[worst.state];
+    return this._badge("Health alerts", null, { text: colour ? `${which}: ${cap(worst.state)}` : "None", colour });
+  }
+
+  _power() {
+    const p = this._entity("power_cuts_nearby");
+    const radius = p?.attributes?.radius_km;
+    const title = `<h2>Power cuts${radius ? ` within ${esc(Math.round(radius))} km` : ""}</h2>`;
+    if (!p) return "";
+    if ((p.attributes.networks || []).length === 0) {
+      return `${title}<p class="muted">Power cut data for your area isn't available yet. More networks are being added.</p>`;
+    }
+    if (this._unavailable(p)) return `${title}<p class="muted">Couldn't reach the electricity network. It will retry automatically.</p>`;
+    const cuts = p.attributes.power_cuts || [];
+    if (!cuts.length) return `${title}<p class="ok">No power cuts or planned work nearby.</p>`;
+    return title + cuts.map((c) => `
+      <div class="item" style="--level:${c.planned ? "var(--divider-color)" : "#f57c00"}">
+        <div class="item-title">${c.planned ? "Planned work" : "Power cut"}, ${esc(c.distance_km)} km away${c.customers ? ` · ${esc(c.customers)} customers` : ""}</div>
+        <div class="meta">${esc(c.network)}${c.estimated_restore ? ` · estimated back ${this._fmt(c.estimated_restore, { weekday: "short", hour: "2-digit", minute: "2-digit" })}` : ""}</div>
+        ${c.cause ? `<div class="meta">${esc(String(c.cause).slice(0, 200))}</div>` : ""}
+        <div class="meta">${link(c.link, `${c.network} power cut map`)}</div>
+      </div>`).join("");
+  }
+
+  _healthSection() {
+    const rows = ["heat", "cold"].map((k) => [k, this._entity(`${k}_health_alert`)]).filter(([, e]) => !this._unavailable(e));
+    if (!rows.length) return "";
+    const region = rows[0][1].attributes.region;
+    return `<h2>Heat and cold health alerts${region ? `: ${esc(region)}` : ""}</h2>` + rows.map(([k, e]) => {
+      const colour = HEALTH_COLOURS[e.state];
+      return colour
+        ? `<div class="item" style="--level:${colour}"><div class="item-title">${cap(e.state)} ${k}-health alert</div>
+             <div class="meta">${esc(e.attributes.summary || "")}</div><div class="meta">${link(e.attributes.link, "UKHSA details")}</div></div>`
+        : `<p class="ok">${cap(k)}: no alert (green).</p>`;
+    }).join("");
+  }
+
+  _national() {
+    const t = this._entity("threat_level"), g = this._entity("grid_status");
+    let threat;
+    if (this._unavailable(t)) threat = `<p class="muted">Couldn't reach MI5. It will retry automatically.</p>`;
+    else threat = `
+      <div class="threat" style="--level:${THREAT_COLOURS[t.state] || "var(--divider-color)"}">
+        <div class="badge-label">UK terrorism threat level</div>
+        <div class="threat-level">${esc(t.state.toUpperCase())}</div>
+        ${t.attributes.ni_level ? `<div class="meta">Northern Ireland-related terrorism in Northern Ireland: ${esc(t.attributes.ni_level.toUpperCase())}</div>` : ""}
+        <div class="meta">${link(t.attributes.link, "What the levels mean (MI5)")}</div>
+      </div>`;
+    let grid;
+    if (this._unavailable(g)) grid = `<p class="muted">Couldn't reach the grid notices feed. It will retry automatically.</p>`;
+    else {
+      const active = g.attributes.active_notices || [], recent = g.attributes.recent_notices || [];
+      grid = `<div class="item" style="--level:${GRID_COLOURS[g.state] || "#43a047"}">
+          <div class="item-title">Grid supply: ${esc(GRID_LABELS[g.state] || g.state)}</div>
+          ${active.map((a) => `<div class="meta">${esc(a)}</div>`).join("")}
+          ${g.state !== "normal" ? `<div class="meta">NESO issues these to bring more power onto the grid. A notice alone doesn't mean power cuts are expected.</div>` : ""}
+        </div>
+        ${recent.length ? `<div class="meta">Recent: ${recent.slice(0, 3).map((r) => esc(r.summary) + (r.cancelled ? " (cancelled)" : "")).join("; ")}</div>` : ""}`;
+    }
+    return `<div class="card"><h2>Terrorism threat level</h2>${threat}<h2>Electricity grid</h2>${grid}
+      <div class="footer"><span>${esc(t?.attributes?.attribution || "")}${g?.attributes?.attribution ? ` · ${esc(g.attributes.attribution)}` : ""}</span></div></div>`;
   }
 
   _riverBadge() {
@@ -153,6 +238,12 @@ class UkphAlertsPanel extends HTMLElement {
     const order = { very_high: 0, high: 1 };
     stations.sort((a, b) => (order[a.status] ?? 2) - (order[b.status] ?? 2) || a.distance_km - b.distance_km);
     const rows = stations.map((s) => {
+      if (s.level == null && s.status) {
+        return `<div class="river" style="--level:${RIVER_COLOURS[s.status] || "var(--secondary-text-color)"}"><div class="river-head">
+          <span>${link(s.link, `${s.river} at ${s.station}`)} <span class="meta">${esc(s.distance_km)} km</span></span>
+          <span class="river-state">${esc(RIVER_LABELS[s.status] || s.status)}</span></div>
+          <div class="meta">SEPA gives a high, normal or low state for this station, not a level in metres.</div></div>`;
+      }
       if (s.level == null) {
         return `<div class="river"><div class="river-head"><span>${link(s.link, `${s.river} at ${s.station}`)}</span><span class="muted">No recent reading</span></div></div>`;
       }
@@ -230,7 +321,10 @@ const STYLE = `
   .muted { color: var(--secondary-text-color); }
   .ok { color: var(--secondary-text-color); }
   .status { font-size: 12px; font-style: italic; color: var(--secondary-text-color); }
-  .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .badges { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+  .section { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: var(--secondary-text-color); margin: 4px 4px -6px; }
+  .threat { border-left: 6px solid var(--level); padding: 4px 0 4px 14px; margin: 6px 0 14px; }
+  .threat-level { font-size: 26px; font-weight: 600; color: var(--level); letter-spacing: .04em; }
   .river { margin: 10px 0 14px; }
   .river-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .river-state { font-weight: 500; color: var(--level); white-space: nowrap; }

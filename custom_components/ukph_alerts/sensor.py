@@ -20,6 +20,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    ATTRIBUTION_GRID,
+    ATTRIBUTION_MI5,
+    ATTRIBUTION_POWER,
+    ATTRIBUTION_UKHSA,
+    GRID_STATUSES,
+    HEALTH_LEVELS,
+    THREAT_LEVELS,
     ATTRIBUTION_EA,
     ATTRIBUTION_MET_OFFICE,
     ATTRIBUTION_UKPH,
@@ -43,6 +50,24 @@ def _highest_met_office(warnings: list[dict]) -> str:
 
 def _rivers_high(data: dict | None) -> list[dict]:
     return [s for s in (data or {}).get("stations", []) if s.get("status") in HIGH_STATUSES]
+
+
+def _unplanned(data: list | None) -> list[dict]:
+    return [c for c in (data or []) if not c.get("planned")]
+
+
+def _health(kind: str) -> Callable[[Any], Any]:
+    return lambda data: (data or {}).get(kind, {}) and data[kind]["level"]
+
+
+def _health_attrs(kind: str) -> Callable[[Any, Any], dict]:
+    def attrs(data, entry):
+        h = (data or {}).get(kind)
+        if not h:
+            return {"note": "UKHSA weather-health alerts cover England only"}
+        return {k: h.get(k) for k in ("region", "summary", "likelihood", "impact", "period_start", "period_end",
+                                      "updated", "link")}
+    return attrs
 
 
 def _device_info(entry: UkphConfigEntry) -> DeviceInfo:
@@ -134,6 +159,69 @@ SENSORS: tuple[UkphSensorDescription, ...] = (
         } if data else {},
     ),
     UkphSensorDescription(
+        key="power_cuts_nearby",
+        translation_key="power_cuts_nearby",
+        icon="mdi:transmission-tower-off",
+        source="power",
+        attribution=ATTRIBUTION_POWER,
+        value_fn=lambda data: len(_unplanned(data)) if data is not None else None,
+        attrs_fn=lambda data, entry: {
+            "radius_km": _opt(entry, CONF_RADIUS),
+            "planned_works": len([c for c in data or [] if c.get("planned")]),
+            "networks": entry.runtime_data.home["networks"],
+            "power_cuts": data or [],
+        },
+    ),
+    UkphSensorDescription(
+        key="heat_health_alert",
+        translation_key="heat_health_alert",
+        icon="mdi:thermometer-high",
+        device_class=SensorDeviceClass.ENUM,
+        options=HEALTH_LEVELS,
+        source="health",
+        attribution=ATTRIBUTION_UKHSA,
+        value_fn=_health("heat"),
+        attrs_fn=_health_attrs("heat"),
+    ),
+    UkphSensorDescription(
+        key="cold_health_alert",
+        translation_key="cold_health_alert",
+        icon="mdi:snowflake-thermometer",
+        device_class=SensorDeviceClass.ENUM,
+        options=HEALTH_LEVELS,
+        source="health",
+        attribution=ATTRIBUTION_UKHSA,
+        value_fn=_health("cold"),
+        attrs_fn=_health_attrs("cold"),
+    ),
+    UkphSensorDescription(
+        key="threat_level",
+        translation_key="threat_level",
+        icon="mdi:shield-alert-outline",
+        device_class=SensorDeviceClass.ENUM,
+        options=THREAT_LEVELS,
+        source="threat",
+        attribution=ATTRIBUTION_MI5,
+        value_fn=lambda data: data["level"] if data else None,
+        attrs_fn=lambda data, entry: {k: data.get(k) for k in ("ni_level", "summary", "updated", "link")}
+        if data else {},
+    ),
+    UkphSensorDescription(
+        key="grid_status",
+        translation_key="grid_status",
+        icon="mdi:transmission-tower",
+        device_class=SensorDeviceClass.ENUM,
+        options=GRID_STATUSES,
+        source="grid",
+        attribution=ATTRIBUTION_GRID,
+        value_fn=lambda data: data["status"] if data else None,
+        attrs_fn=lambda data, entry: {
+            "active_notices": [n["summary"] for n in data["active"]],
+            "recent_notices": [{"type": n["type"], "summary": n["summary"], "published": n["published"],
+                                "cancelled": n["cancelled"]} for n in data["recent"]],
+        } if data else {},
+    ),
+    UkphSensorDescription(
         key="daily_news",
         translation_key="daily_news",
         icon="mdi:newspaper-variant-outline",
@@ -169,7 +257,9 @@ async def async_setup_entry(
 
     @callback
     def add_new_stations() -> None:
-        new = [s for s in (rivers.data or {}).get("stations", []) if s["ref"] not in known]
+        # SEPA stations give a state but no level in metres, so they appear on the page and in the summary only.
+        new = [s for s in (rivers.data or {}).get("stations", [])
+               if s["ref"] not in known and s.get("source") != "SEPA"]
         known.update(s["ref"] for s in new)
         if new:
             async_add_entities(RiverStationSensor(rivers, entry, s) for s in new)
@@ -192,7 +282,8 @@ class UkphSensor(CoordinatorEntity[UkphCoordinator], SensorEntity):
 
     _attr_has_entity_name = True
     # The long text and story list would bloat the recorder database every day.
-    _unrecorded_attributes = frozenset({"brief", "stories", "warnings", "stations", "rivers_above_normal"})
+    _unrecorded_attributes = frozenset({"brief", "stories", "warnings", "stations", "rivers_above_normal",
+                                        "power_cuts", "recent_notices", "summary"})
     entity_description: UkphSensorDescription
 
     def __init__(

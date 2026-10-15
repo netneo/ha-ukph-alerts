@@ -15,9 +15,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTRIBUTION_EA, ATTRIBUTION_MET_OFFICE
+from .const import ATTRIBUTION_EA, ATTRIBUTION_GRID, ATTRIBUTION_MET_OFFICE, ATTRIBUTION_POWER
 from .coordinator import UkphConfigEntry, UkphCoordinator
-from .sensor import _device_info, _rivers_high
+from .sensor import _device_info, _rivers_high, _unplanned
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -56,6 +56,24 @@ BINARY_SENSORS: tuple[UkphBinaryDescription, ...] = (
         items_fn=_rivers_high,
         summary_fn=lambda s: f"{s['river']} at {s['station']}: {s['status'].replace('_', ' ')}"
         + (f", {s['trend']}" if s.get("trend") else ""),
+    ),
+    UkphBinaryDescription(
+        key="power_cut_nearby",
+        translation_key="power_cut_nearby",
+        icon="mdi:transmission-tower-off",
+        source="power",
+        attribution=ATTRIBUTION_POWER,
+        items_fn=_unplanned,
+        summary_fn=lambda c: f"{c['network']}: {c.get('customers') or '?'} customers, {c['distance_km']} km away",
+    ),
+    UkphBinaryDescription(
+        key="grid_warning_active",
+        translation_key="grid_warning_active",
+        icon="mdi:transmission-tower",
+        source="grid",
+        attribution=ATTRIBUTION_GRID,
+        items_fn=lambda data: [n for n in (data or {}).get("active", []) if n["status"] != "normal"],
+        summary_fn=lambda n: n["summary"],
     ),
 )
 

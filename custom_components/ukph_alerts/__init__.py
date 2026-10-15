@@ -10,7 +10,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from .alerts import UkphAlerter
-from .api import UkphApi
+from .api import UkphApi, guess_ukhsa_region
+from .config_flow import guess_region
 from .const import (
     CONF_RADIUS,
     CONF_REGION,
@@ -19,7 +20,11 @@ from .const import (
     INTERVAL_FLOODS,
     INTERVAL_MET_OFFICE,
     INTERVAL_NEWS,
+    INTERVAL_HEALTH,
+    INTERVAL_NATIONAL,
+    INTERVAL_POWER,
     INTERVAL_RIVERS,
+    POWER_NETWORKS_BY_REGION,
     RIVER_STATION_REFRESH,
 )
 from .coordinator import UkphConfigEntry, UkphCoordinator, UkphData
@@ -38,9 +43,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: UkphConfigEntry) -> bool
     region = _option(entry, CONF_REGION, "UK")
     radius = _option(entry, CONF_RADIUS, DEFAULT_RADIUS)
 
+    # Where home is decides which sources apply: SEPA vs EA as the must-work flood source, which electricity
+    # networks to ask, and the UKHSA region. Worked out locally from HA's home location, never sent anywhere.
+    home_region = guess_region(hass.config.latitude, hass.config.longitude)
+    home = {
+        "region": home_region,
+        "scotland": home_region in ("os", "he", "gr", "st", "ta", "dg"),
+        "networks": POWER_NETWORKS_BY_REGION.get(home_region, []),
+        "ukhsa_region": guess_ukhsa_region(hass.config.latitude, hass.config.longitude),
+    }
+
     async def fetch_floods():
         # Read HA's home location on every poll, so a corrected location is picked up without reconfiguring.
-        return await api.floods(hass.config.latitude, hass.config.longitude, radius)
+        return await api.floods(hass.config.latitude, hass.config.longitude, radius, home["scotland"])
+
+    async def fetch_power():
+        return await api.power_cuts(home["networks"], hass.config.latitude, hass.config.longitude, radius)
+
+    async def fetch_health():
+        if not home["ukhsa_region"]:
+            return {"heat": None, "cold": None}  # UKHSA only covers England
+        heat, cold = await asyncio.gather(api.health("heat", home["ukhsa_region"]),
+                                          api.health("cold", home["ukhsa_region"]))
+        return {"heat": heat, "cold": cold}
 
     stations: dict = {"list": None, "total": 0, "fetched": None}
 
@@ -51,7 +76,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: UkphConfigEntry) -> bool
             stations["list"], stations["total"] = await api.river_stations(
                 hass.config.latitude, hass.config.longitude, radius)
             stations["fetched"] = now
-        return {"stations": await api.river_levels(stations["list"]), "total_usable": stations["total"]}
+        levels = await api.river_levels(stations["list"])
+        try:
+            sepa = await api.sepa_rivers(hass.config.latitude, hass.config.longitude, radius)
+        except Exception:  # noqa: BLE001 - only fatal where SEPA is the home source
+            if home["scotland"]:
+                raise
+            sepa = []
+        merged = sorted(levels + sepa, key=lambda s: s["distance_km"])
+        return {"stations": merged, "total_usable": stations["total"] + len(sepa)}
 
     data = UkphData(
         met_office=UkphCoordinator(hass, entry, "met_office", INTERVAL_MET_OFFICE,
@@ -59,10 +92,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: UkphConfigEntry) -> bool
         floods=UkphCoordinator(hass, entry, "floods", INTERVAL_FLOODS, fetch_floods),
         news=UkphCoordinator(hass, entry, "news", INTERVAL_NEWS, api.news),
         rivers=UkphCoordinator(hass, entry, "rivers", INTERVAL_RIVERS, fetch_rivers),
+        threat=UkphCoordinator(hass, entry, "threat", INTERVAL_NATIONAL, api.threat),
+        grid=UkphCoordinator(hass, entry, "grid", INTERVAL_NATIONAL, api.grid),
+        power=UkphCoordinator(hass, entry, "power", INTERVAL_POWER, fetch_power),
+        health=UkphCoordinator(hass, entry, "health", INTERVAL_HEALTH, fetch_health),
+        home=home,
     )
     # Plain refresh, not first_refresh: a source that is down just leaves its own sensors unavailable.
-    await asyncio.gather(data.met_office.async_refresh(), data.floods.async_refresh(),
-                         data.news.async_refresh(), data.rivers.async_refresh())
+    await asyncio.gather(*(c.async_refresh() for c in (
+        data.met_office, data.floods, data.news, data.rivers, data.threat, data.grid, data.power, data.health)))
     entry.runtime_data = data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -29,7 +29,7 @@ class Coord:
         return lambda: None
 
 
-def make(met=None, floods=None, rivers=None, opts=None):
+def make(met=None, floods=None, rivers=None, opts=None, power=None, health=None, grid=None, threat=None):
     sent, events = [], []
     hass = SimpleNamespace(
         bus=SimpleNamespace(async_fire=lambda t, d: events.append(d)),
@@ -38,7 +38,11 @@ def make(met=None, floods=None, rivers=None, opts=None):
     )
     entry = SimpleNamespace(entry_id="e1", async_on_unload=lambda f: None,
                             runtime_data=SimpleNamespace(met_office=Coord(met or []), floods=Coord(floods or []),
-                                                         rivers=Coord({"stations": rivers or []})))
+                                                         rivers=Coord({"stations": rivers or []}),
+                                                         power=Coord(power or []),
+                                                         health=Coord(health or {"heat": None, "cold": None}),
+                                                         grid=Coord(grid or {"active": []}),
+                                                         threat=Coord(threat)))
     a = al.UkphAlerter(hass, entry, {"notify_services": ["mobile_app_phone"], **(opts or {})})
     return a, entry, sent, events
 
@@ -106,6 +110,38 @@ async def run():
         a, e, sent, _ = make(floods=fl)
         await a.async_start()
         assert len(sent) == 1 and sent[0]["title"].startswith("5 new flood warnings")
+        # power cuts: default "near" = within 2 km only, unplanned only
+        FakeStore.saved = None
+        cut = lambda i, d, planned=False: {"id": i, "distance_km": d, "planned": planned, "customers": 40,
+                                           "network": "UK Power Networks", "estimated_restore": None, "cause": "x", "link": "l"}
+        a, e, sent, _ = make(power=[cut("far", 6.0), cut("plan", 0.5, True)])
+        await a.async_start()
+        assert not sent
+        e.runtime_data.power.data = [cut("far", 6.0), cut("near", 1.2)]
+        await a._evaluate()
+        assert len(sent) == 1 and "1.2 km" in sent[0]["title"]
+        e.runtime_data.power.data = [cut("far", 6.0)]
+        await a._evaluate()
+        assert sent[-1]["title"] == "✅ All clear"
+
+        # health: amber alert, then the all clear actually fires (bug caught in review)
+        FakeStore.saved = None
+        hh = lambda lvl: {"heat": {"level": lvl, "region": "East of England", "summary": "s", "link": "l"}, "cold": None}
+        a, e, sent, _ = make(health=hh("amber"))
+        await a.async_start()
+        assert len(sent) == 1 and "Amber heat-health" in sent[0]["title"]
+        e.runtime_data.health.data = hh("green")
+        await a._evaluate()
+        assert len(sent) == 2 and sent[-1]["title"] == "✅ All clear"
+
+        # threat: remember on first run, alert on change
+        FakeStore.saved = None
+        a, e, sent, events = make(threat={"level": "severe", "summary": "s", "link": "l"})
+        await a.async_start()
+        assert not sent
+        e.runtime_data.threat.data = {"level": "substantial", "summary": "s", "link": "l"}
+        await a._evaluate()
+        assert len(sent) == 1 and "lowered to SUBSTANTIAL" in sent[0]["title"] and events[-1]["change"] == "downgrade"
     print("ok alerts")
 
 

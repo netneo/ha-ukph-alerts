@@ -14,6 +14,16 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_ALERT_GRID,
+    CONF_ALERT_HEALTH,
+    CONF_ALERT_POWER,
+    CONF_ALERT_THREAT,
+    DEFAULT_ALERT_GRID,
+    DEFAULT_ALERT_HEALTH,
+    DEFAULT_ALERT_POWER,
+    DEFAULT_ALERT_THREAT,
+    POWER_ALERT_NEAR_KM,
+    THREAT_LEVELS,
     CONF_ALL_CLEAR,
     CONF_MIN_FLOOD,
     CONF_MIN_MET,
@@ -34,6 +44,8 @@ MET_RANK = {"yellow": 1, "amber": 2, "red": 3}
 FLOOD_RANK = {"flood_alert": 1, "flood_warning": 2, "severe_flood_warning": 3}
 RIVER_RANK = {"high": 1, "very_high": 2}
 RIVER_MIN = {"high": 1, "very_high": 2, "very_high_rising": 2}
+GRID_RANK = {"margin_notice": 1, "high_risk": 2, "demand_control": 3}
+HEALTH_RANK = {"yellow": 1, "amber": 2, "red": 3}
 BATCH_LIMIT = 3  # more new alerts than this in one go are rolled into one summary per type
 PANEL_LINK = f"/{PANEL_URL_PATH}"
 
@@ -55,6 +67,11 @@ class UkphAlerter:
         self.min_flood = FLOOD_RANK[options.get(CONF_MIN_FLOOD, DEFAULT_MIN_FLOOD)]
         self.river_mode = options.get(CONF_RIVER_ALERT, DEFAULT_RIVER_ALERT)
         self.all_clear = options.get(CONF_ALL_CLEAR, DEFAULT_ALL_CLEAR)
+        self.power_mode = options.get(CONF_ALERT_POWER, DEFAULT_ALERT_POWER)
+        self.health_min = options.get(CONF_ALERT_HEALTH, DEFAULT_ALERT_HEALTH)
+        self.threat_on = options.get(CONF_ALERT_THREAT, DEFAULT_ALERT_THREAT)
+        self.grid_min = options.get(CONF_ALERT_GRID, DEFAULT_ALERT_GRID)
+        self.radius = options.get("flood_radius_km", 10)
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.alerts")
         self._state: dict[str, dict[str, Any]] = {"seen": {}, "notified": {}}
 
@@ -62,7 +79,8 @@ class UkphAlerter:
         if loaded := await self._store.async_load():
             self._state = loaded
         data = self.entry.runtime_data
-        for coordinator in (data.met_office, data.floods, data.rivers):
+        for coordinator in (data.met_office, data.floods, data.rivers, data.power, data.health, data.grid,
+                            data.threat):
             self.entry.async_on_unload(coordinator.async_add_listener(self._schedule))
         await self._evaluate()
 
@@ -99,6 +117,43 @@ class UkphAlerter:
                 "link": w.get("link") or PANEL_LINK,
                 "clear": f"{w['severity'].replace('_', ' ').capitalize()} for {w.get('description')} is no longer in force.",
             } for w in coordinator.data]
+        if kind == "power":
+            return [{
+                "key": f"power:{c['id']}",
+                "rank": 1,
+                "level": "power_cut",
+                "distance": c["distance_km"],
+                "title": f"🔌 Power cut {c['distance_km']} km away",
+                "message": " · ".join(filter(None, [
+                    f"{c['customers']} customers off" if c.get("customers") else "",
+                    f"{c['network']}",
+                    f"estimated back {_when(c['estimated_restore'])}" if c.get("estimated_restore") else "",
+                    (c.get("cause") or "")[:160],
+                ])),
+                "link": c.get("link") or PANEL_LINK,
+                "clear": f"The power cut {c['distance_km']} km away is no longer listed by {c['network']}.",
+            } for c in coordinator.data if not c.get("planned")]
+        if kind == "health":
+            return [{
+                "key": f"health:{k}:{h['region']}",  # must start "health:" so the all-clear sweep finds it
+                "rank": HEALTH_RANK[h["level"]],
+                "level": h["level"],
+                "title": f"{'🥵' if k == 'heat' else '🥶'} {h['level'].capitalize()} {k}-health alert: {h['region']}",
+                "message": (h.get("summary") or "")[:300],
+                "link": h.get("link") or PANEL_LINK,
+                "clear": f"The {k}-health alert for {h['region']} has ended.",
+            } for k, h in coordinator.data.items() if h and h["level"] in HEALTH_RANK]
+        if kind == "grid":
+            return [{
+                "key": f"grid:{n['type']}:{n['start'].isoformat() if hasattr(n['start'], 'isoformat') else n['start']}",
+                "rank": GRID_RANK[n["status"]],
+                "level": n["status"],
+                "title": f"⚡ Grid notice: {n['type']}",
+                "message": n["summary"] + ". NESO uses these to get more power onto the grid; it doesn't by itself "
+                           "mean power cuts are expected.",
+                "link": PANEL_LINK,
+                "clear": f"{n['summary']}: ended or cancelled.",
+            } for n in coordinator.data.get("active", []) if n["status"] in GRID_RANK]
         return [{
             "key": f"river:{s['ref']}",
             "rank": RIVER_RANK[s["status"]],
@@ -116,6 +171,13 @@ class UkphAlerter:
             return item["rank"] >= self.min_met
         if kind == "flood":
             return item["rank"] >= self.min_flood
+        if kind == "power":
+            return self.power_mode != "off" and item["distance"] <= (
+                POWER_ALERT_NEAR_KM if self.power_mode == "near" else self.radius)
+        if kind == "health":
+            return self.health_min != "off" and item["rank"] >= HEALTH_RANK[self.health_min]
+        if kind == "grid":
+            return self.grid_min != "off" and item["rank"] >= GRID_RANK[self.grid_min]
         if self.river_mode == "off":
             return False
         if item["rank"] < RIVER_MIN[self.river_mode]:
@@ -132,7 +194,9 @@ class UkphAlerter:
         clears: list[dict[str, Any]] = []
         changed = False
 
-        for kind, coordinator in (("met", data.met_office), ("flood", data.floods), ("river", data.rivers)):
+        await self._threat(data.threat)
+        for kind, coordinator in (("met", data.met_office), ("flood", data.floods), ("river", data.rivers),
+                                  ("power", data.power), ("health", data.health), ("grid", data.grid)):
             items = self._items(kind, coordinator)
             if items is None:
                 continue
@@ -141,7 +205,8 @@ class UkphAlerter:
                 before = seen.get(key)
                 if before is None or item["rank"] > before["rank"]:
                     self.hass.bus.async_fire(EVENT_NEW_WARNING, {
-                        "type": {"met": "met_office", "flood": "flood", "river": "river"}[kind],
+                        "type": {"met": "met_office", "flood": "flood", "river": "river", "power": "power_cut",
+                                 "health": "health", "grid": "grid"}[kind],
                         "change": "new" if before is None else "upgrade",
                         "level": item["level"], "title": item["title"], "link": item["link"],
                     })
@@ -166,7 +231,8 @@ class UkphAlerter:
 
         for kind, items in outgoing.items():
             if len(items) > BATCH_LIMIT:
-                names = {"met": "Met Office warnings", "flood": "flood warnings", "river": "rivers running high"}
+                names = {"met": "Met Office warnings", "flood": "flood warnings", "river": "rivers running high",
+                         "power": "power cuts", "health": "health alerts", "grid": "grid notices"}
                 await self._send(f"{len(items)} new {names[kind]} near you",
                                  "; ".join(i["title"] for i in items)[:400], PANEL_LINK, f"ukph-{kind}-batch")
             else:
@@ -177,6 +243,27 @@ class UkphAlerter:
                 await self._send("✅ All clear", c["message"], PANEL_LINK, c["key"])
         if changed:
             await self._store.async_save(self._state)
+
+    async def _threat(self, coordinator: UkphCoordinator) -> None:
+        """The threat level is a single value: alert whenever it changes, up or down."""
+        if not coordinator.last_update_success or not coordinator.data:
+            return
+        level = coordinator.data["level"]
+        before = self._state["seen"].get("threat:national")
+        if before == level:
+            return
+        self._state["seen"]["threat:national"] = level
+        await self._store.async_save(self._state)
+        if before is None:
+            return  # first run: just remember it, nothing has changed
+        raised = THREAT_LEVELS.index(level) > THREAT_LEVELS.index(before)
+        self.hass.bus.async_fire(EVENT_NEW_WARNING, {"type": "threat_level", "change": "upgrade" if raised else "downgrade",
+                                                     "level": level, "title": f"UK threat level now {level.upper()}",
+                                                     "link": coordinator.data.get("link")})
+        if self.threat_on:
+            await self._send(f"🛡️ UK terrorism threat level {'raised' if raised else 'lowered'} to {level.upper()}",
+                             f"Was {before.upper()}. {coordinator.data.get('summary') or ''}"[:300],
+                             coordinator.data.get("link") or PANEL_LINK, "threat")
 
     async def _send(self, title: str, message: str, link: str, tag: str) -> None:
         tag = "ukph-" + "".join(ch if ch.isalnum() else "-" for ch in tag)[:60]

@@ -3,8 +3,11 @@
 A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's daily news into one place:
 
 - **Met Office severe weather warnings** for your region (whole UK or any of the 16 Met Office regions)
-- **Environment Agency flood warnings** near your home (England for now)
+- **Flood warnings** near your home, from the Environment Agency (England) and SEPA (Scotland)
 - **River levels** at every monitoring station near you: normal, high or very high, and whether it's rising
+- **Power cuts** near you, live from your electricity network
+- **Heat and cold health alerts** for your region (UKHSA, England)
+- **National:** the UK terrorism threat level (MI5) and electricity grid supply notices (NESO)
 - **Phone alerts**, built in: get a notification the moment a serious warning is issued near you, with no automations to write
 - **UK Prepper Hub Daily News**: today's headline, the Quick News Brief, and every story with a link
 
@@ -15,6 +18,17 @@ A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's d
 - **Phone alerts work out of the box.** Phones with the Home Assistant app are ticked for alerts during setup, with sensible levels already chosen (amber or red weather warnings, flood warnings, rivers very high and rising). Untick anything you don't want.
 - **The menu entry is removable.** Don't want it in your sidebar? Switch it off any time under **Configure**, and switch it back on just as easily. The sensors keep working either way.
 - **It also gives you normal sensors** for your own dashboards and automations, such as a phone alert when an amber warning or a flood warning is issued near you.
+
+### What's covered where
+
+| | England | Scotland | Wales | Northern Ireland |
+|---|---|---|---|---|
+| Met Office weather warnings | ✅ | ✅ | ✅ | ✅ |
+| Flood warnings | ✅ EA | ✅ SEPA | coming soon | no public service exists |
+| River levels | ✅ EA (levels + trend) | ✅ SEPA (high/normal/low) | coming soon | — |
+| Power cuts | ✅ UKPN, NGED, Northern Powergrid, SSEN; ENW coming soon | ✅ SSEN; SP Energy Networks coming soon | ✅ NGED; SP Energy Networks coming soon | ✅ NIE Networks |
+| Heat/cold health alerts | ✅ UKHSA | — | — | — |
+| Threat level, grid notices, daily news | ✅ | ✅ | ✅ | ✅ |
 
 ![The UK Prepper Hub page with warnings in force: red, amber and yellow Met Office warnings and all three levels of flood warning](images/warning-levels.png)
 <sub>Example data showing every warning level. With nothing in force, each section simply says so.</sub>
@@ -28,16 +42,17 @@ A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's d
 3. [Setting it up](#setting-it-up)
 4. [The UK Prepper Hub page](#the-uk-prepper-hub-page)
 5. [River levels](#river-levels)
-6. [Phone alerts](#phone-alerts)
-7. [Finding your sensors](#finding-your-sensors)
-8. [Optional: a dashboard of your own](#optional-a-dashboard-of-your-own)
-9. [Automation examples](#automation-examples)
-10. [Changing your settings](#changing-your-settings)
-11. [Updating and removing](#updating-and-removing)
-12. [Sensor reference](#sensor-reference)
-13. [Troubleshooting](#troubleshooting)
-14. [Privacy](#privacy)
-15. [Data sources and attribution](#data-sources-and-attribution)
+6. [Power cuts, health alerts and national](#power-cuts-health-alerts-and-national)
+7. [Phone alerts](#phone-alerts)
+8. [Finding your sensors](#finding-your-sensors)
+9. [Optional: a dashboard of your own](#optional-a-dashboard-of-your-own)
+10. [Automation examples](#automation-examples)
+11. [Changing your settings](#changing-your-settings)
+12. [Updating and removing](#updating-and-removing)
+13. [Sensor reference](#sensor-reference)
+14. [Troubleshooting](#troubleshooting)
+15. [Privacy](#privacy)
+16. [Data sources and attribution](#data-sources-and-attribution)
 
 ---
 
@@ -82,12 +97,14 @@ A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's d
 
 ## The UK Prepper Hub page
 
-Click **UK Prepper Hub** in the sidebar. You'll see:
+Click **UK Prepper Hub** in the sidebar. The left-hand side is split into **Local** (things near your home) and **National**. You'll see:
 
 - **Warning badges** at the top, coloured yellow, amber or red when something is in force.
 - **Met Office warnings** for your region, each with its times, the areas affected and a link to the full warning.
 - **Flood alerts and warnings** within your radius, each with the Environment Agency's message and a link to GOV.UK.
 - **River levels** at every station within your radius. See [River levels](#river-levels).
+- **Power cuts** within your radius, and **heat/cold health alerts** for your region.
+- **National:** the terrorism threat level and the state of the electricity grid.
 - **Today's UK Prepper Hub news**: the headline, the Quick News Brief, and every story grouped by section, each linking to that story.
 
 How the warnings are shown:
@@ -119,6 +136,18 @@ Every Environment Agency river level station within your radius is included auto
 
 Each station is also a sensor, so you get a history graph for free. The **Rivers above normal** sensor counts how many are high, and **River high nearby** turns on when any of them is. The station list refreshes itself daily, and stations that move out of your radius are removed automatically.
 
+## Power cuts, health alerts and national
+
+<img src="images/local.png" alt="The Local section" width="420"> <img src="images/national.png" alt="The National section" width="420">
+
+**Power cuts.** Live faults and planned work within your radius, straight from your electricity network: how far away, how many customers are affected, the estimated fix time and a link to the network's own power cut map. Which network is used is worked out from your home location. Exact fault locations aren't stored, only the distance.
+
+**Heat and cold health alerts** (England only). The UK Health Security Agency's green, yellow, amber or red alert for your region, with what it means for health. Cold alerts run from 1 November to 31 March, heat alerts from 1 June to 30 September. This uses the same data as UKHSA's dashboard, which isn't an officially documented feed yet, so treat it as experimental.
+
+**Terrorism threat level.** MI5's current national level (Low, Moderate, Substantial, Severe or Critical), plus the separate level for Northern Ireland-related terrorism.
+
+**Electricity grid.** Notices from the national grid operator, NESO. An *Electricity Margin Notice* asks generators to bring more power onto the grid when supply is tight. It's a routine tool and doesn't by itself mean power cuts. *High risk of demand reduction* and *demand control* are the serious ones. Emergency power requests from abroad are listed for information.
+
 ## Phone alerts
 
 Phones ticked during setup get a notification when something reaches the levels you've chosen. There are no automations to write.
@@ -128,6 +157,10 @@ Phones ticked during setup get a notification when something reaches the levels 
 | Met Office warnings | Amber and red | Yellow and above · Red only |
 | Flood warnings | Flood warnings and severe | Flood alerts and above · Severe only |
 | Rivers | Above its highest recent level **and still rising** | Above its normal range · Above its highest recent level · Off |
+| Power cuts | Unplanned, within 2 km of home | Anywhere in your search radius · Off |
+| Heat/cold health alerts | Amber and red | Yellow and above · Off |
+| Terrorism threat level | Any change | Off |
+| Grid notices | High risk of demand reduction or worse | Any notice, including margin notices · Off |
 | All clear | On | Off |
 
 - **One alert per warning.** It won't repeat every few minutes. You get another only if the warning is upgraded, say from amber to red.
@@ -157,6 +190,12 @@ The sensors are:
 | `binary_sensor.uk_prepper_hub_alerts_weather_warning_active` | On while any Met Office warning is in force for your region |
 | `binary_sensor.uk_prepper_hub_alerts_flood_warning_nearby` | On while any flood alert or warning is within your radius |
 | `binary_sensor.uk_prepper_hub_alerts_river_high_nearby` | On while any nearby river is above its normal range |
+| `sensor.uk_prepper_hub_alerts_power_cuts_nearby` | Number of unplanned power cuts within your radius |
+| `binary_sensor.uk_prepper_hub_alerts_power_cut_nearby` | On while any unplanned power cut is within your radius |
+| `sensor.uk_prepper_hub_alerts_heat_health_alert` / `…_cold_health_alert` | `green`, `yellow`, `amber` or `red` (England) |
+| `sensor.uk_prepper_hub_alerts_uk_terrorism_threat_level` | `low`, `moderate`, `substantial`, `severe` or `critical` |
+| `sensor.uk_prepper_hub_alerts_grid_supply_status` | `normal`, `margin_notice`, `high_risk` or `demand_control` |
+| `binary_sensor.uk_prepper_hub_alerts_grid_warning_active` | On while a grid notice is in force |
 
 Click any sensor and open **Attributes** to see the full details: each warning's areas and times, the news brief, the list of stories, and so on.
 
@@ -282,6 +321,10 @@ Flood warnings and river levels always use Home Assistant's current home locatio
 | Rivers above normal | Number of nearby rivers above normal | `radius_km`, `rivers_above_normal` (river, station, level, status, trend, link), `stations_shown`, `stations_in_radius`, `stations` (every station's full details) |
 | River level (one per station) | Level in metres | `river`, `station`, `status` (`low` / `normal` / `high` / `very_high`), `trend` (`rising` / `falling` / `steady`), `change_1h_m`, `typical_low`, `typical_high`, `highest_recent`, `max_on_record`, `distance_km`, `reading_time`, `link` |
 | Weather warning active / Flood warning nearby / River high nearby | `on` / `off` | `count`, `details` (one line per warning or river) |
+| Power cuts nearby | Number of unplanned cuts | `radius_km`, `planned_works`, `networks`, `power_cuts` (network, distance_km, customers, planned, start, estimated_restore, cause, postcodes, link) |
+| Heat/cold health alert | Alert colour | `region`, `summary`, `likelihood`, `impact`, `period_start`, `period_end`, `link` |
+| UK terrorism threat level | Level | `ni_level`, `summary`, `updated`, `link` |
+| Grid supply status | Status | `active_notices`, `recent_notices` |
 | Daily news | Title of today's post | `link`, `published`, `brief`, `story_count`, `stories`: a list with `section`, `section_slug`, `subsection`, `location`, `headline`, `status`, `url` |
 
 How often each source is checked:
@@ -290,6 +333,9 @@ How often each source is checked:
 |---|---|
 | Met Office | 10 minutes |
 | Environment Agency (floods and river levels) | 15 minutes |
+| Power cuts | 10 minutes |
+| Threat level and grid notices | 15 minutes |
+| Health alerts | 60 minutes |
 | UK Prepper Hub | 30 minutes |
 
 The long attributes (`warnings`, `brief`, `stories`, `stations`) are kept out of Home Assistant's history database, so they don't make it grow.
@@ -299,14 +345,15 @@ The long attributes (`warnings`, `brief`, `stories`, `stations`) are kept out of
 - **No UK Prepper Hub in the sidebar:** check **Show UK Prepper Hub in the sidebar** is on under Configure, then refresh your browser.
 - **Can't find the integration in "Add integration":** make sure you restarted Home Assistant after installing, then refresh your browser. A hard refresh (Ctrl+F5) may be needed.
 - **A sensor shows "Unavailable":** that source couldn't be reached on the last check. The other sensors carry on working, and it retries by itself. Check **Settings → System → Logs** for lines mentioning `ukph_alerts`.
-- **Flood warnings and river levels empty in Scotland, Wales or Northern Ireland:** expected for now. The Environment Agency only covers England. Support for SEPA (Scotland), Natural Resources Wales and Northern Ireland is planned.
+- **Flood warnings and river levels empty in Wales or Northern Ireland:** Wales is coming soon. Northern Ireland has no public flood warning service, so there's nothing to connect to. Met Office warnings still cover NI.
+- **Power cuts say "not available yet":** your area is served by SP Energy Networks or Electricity North West, which are coming soon. See [what's covered where](#whats-covered-where).
 - **No phone alerts:** check your phone is ticked under Configure, and that the Home Assistant app on it has notifications allowed. Only warnings at or above your chosen levels send an alert.
 - **Wrong area's flood warnings:** check your home location under **Settings → System → General**.
 - **Found a bug?** Please [open an issue](https://github.com/netneo/ha-ukph-alerts/issues) and include any `ukph_alerts` log lines.
 
 ## Privacy
 
-- Flood warnings and river levels use the home location set in Home Assistant, **rounded to about 1 km**, and send it only to the Environment Agency's API.
+- Flood warnings, river levels and power cuts use the home location set in Home Assistant, **rounded to about 1 km**, and send it only to the official data services (Environment Agency, SEPA and the electricity networks). Some networks are asked for their whole list, and the distance is worked out inside Home Assistant. Which region and network applies is also worked out locally.
 - Phone alerts go through Home Assistant's own app notifications. Nothing passes through UK Prepper Hub.
 - Your location is never stored by this integration and never sent to UK Prepper Hub or the Met Office.
 - No accounts, no tracking cookies, no API keys.
@@ -316,9 +363,13 @@ The long attributes (`warnings`, `brief`, `stories`, `stations`) are kept out of
 
 - Weather warnings © Crown copyright, from the [Met Office](https://www.metoffice.gov.uk/weather/warnings-and-advice/uk-warnings).
 - Flood warnings and river levels from the [Environment Agency](https://check-for-flooding.service.gov.uk/), used under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). This data covers England only.
+- Scottish flood warnings and river levels from [SEPA](https://floodline.sepa.org.uk/).
+- Power cut data from [UK Power Networks](https://ukpowernetworks.opendatasoft.com/), [National Grid Electricity Distribution](https://connecteddata.nationalgrid.co.uk/), [Northern Powergrid](https://northernpowergrid.opendatasoft.com/), [SSEN](https://powertrack.ssen.co.uk/) and [NIE Networks](https://powercheck.nienetworks.co.uk/).
+- Weather-health alerts from the [UK Health Security Agency](https://ukhsa-dashboard.data.gov.uk/weather-health-alerts).
+- Threat level from [MI5](https://www.mi5.gov.uk/threats-and-advice/threat-levels). Grid notices from NESO, published by [Elexon](https://bmrs.elexon.co.uk/).
 - News from [UK Prepper Hub](https://ukprepperhub.co.uk/).
 
-This integration is not affiliated with or endorsed by the Met Office or the Environment Agency. Always follow official advice in an emergency.
+This integration is not affiliated with or endorsed by any of these organisations. Always follow official advice in an emergency.
 
 ## Licence
 

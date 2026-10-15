@@ -3,16 +3,20 @@
     "step": {
       "user": {
         "title": "UK Prepper Hub Alerts",
-        "description": "Met Office weather warnings, flood warnings and river levels near your home (England for now), and the UK Prepper Hub daily news.\n\nWe've picked **{region}** from your Home Assistant home location. Change it if that's wrong. Flood warnings and river levels use your home location, rounded to about 1 km.\n\nPhones ticked below get an alert when a warning at or above the levels you choose is issued near you.",
+        "description": "Weather, flood, river, power cut and health alerts near your home, the national threat level and grid notices, and the UK Prepper Hub daily news.\n\nWe've picked **{region}** from your Home Assistant home location. Change it if that's wrong. Location-based checks use your home location, rounded to about 1 km.\n\nPhones ticked below get an alert when something at or above the levels you choose happens.",
         "data": {
           "met_office_region": "Met Office warning region",
-          "flood_radius_km": "Search radius for flood warnings and river levels",
+          "flood_radius_km": "Search radius for floods, rivers and power cuts",
           "show_in_sidebar": "Show UK Prepper Hub in the sidebar",
           "notify_services": "Send alerts to these phones",
           "alert_min_met_office": "Alert me for Met Office warnings",
           "alert_min_flood": "Alert me for flood warnings",
           "alert_rivers": "Alert me when a river near me is",
-          "alert_all_clear": "Send an \"all clear\" when it ends"
+          "alert_all_clear": "Send an \"all clear\" when it ends",
+          "alert_power_cuts": "Alert me about power cuts",
+          "alert_health": "Alert me about heat/cold health alerts (England)",
+          "alert_threat_level": "Alert me when the national terrorism threat level changes",
+          "alert_grid": "Alert me about national grid supply notices"
         }
       }
     },
@@ -27,13 +31,17 @@
         "title": "UK Prepper Hub Alerts",
         "data": {
           "met_office_region": "Met Office warning region",
-          "flood_radius_km": "Search radius for flood warnings and river levels",
+          "flood_radius_km": "Search radius for floods, rivers and power cuts",
           "show_in_sidebar": "Show UK Prepper Hub in the sidebar",
           "notify_services": "Send alerts to these phones",
           "alert_min_met_office": "Alert me for Met Office warnings",
           "alert_min_flood": "Alert me for flood warnings",
           "alert_rivers": "Alert me when a river near me is",
-          "alert_all_clear": "Send an \"all clear\" when it ends"
+          "alert_all_clear": "Send an \"all clear\" when it ends",
+          "alert_power_cuts": "Alert me about power cuts",
+          "alert_health": "Alert me about heat/cold health alerts (England)",
+          "alert_threat_level": "Alert me when the national terrorism threat level changes",
+          "alert_grid": "Alert me about national grid supply notices"
         }
       }
     }
@@ -69,6 +77,46 @@
       },
       "rivers_above_normal": {
         "name": "Rivers above normal"
+      },
+      "power_cuts_nearby": {
+        "name": "Power cuts nearby"
+      },
+      "heat_health_alert": {
+        "name": "Heat-health alert",
+        "state": {
+          "green": "Green",
+          "yellow": "Yellow",
+          "amber": "Amber",
+          "red": "Red"
+        }
+      },
+      "cold_health_alert": {
+        "name": "Cold-health alert",
+        "state": {
+          "green": "Green",
+          "yellow": "Yellow",
+          "amber": "Amber",
+          "red": "Red"
+        }
+      },
+      "threat_level": {
+        "name": "UK terrorism threat level",
+        "state": {
+          "low": "Low",
+          "moderate": "Moderate",
+          "substantial": "Substantial",
+          "severe": "Severe",
+          "critical": "Critical"
+        }
+      },
+      "grid_status": {
+        "name": "Grid supply status",
+        "state": {
+          "normal": "Normal",
+          "margin_notice": "Margin notice",
+          "high_risk": "High risk of demand reduction",
+          "demand_control": "Demand control"
+        }
       }
     },
     "binary_sensor": {
@@ -80,6 +128,12 @@
       },
       "river_high_nearby": {
         "name": "River high nearby"
+      },
+      "power_cut_nearby": {
+        "name": "Power cut nearby"
+      },
+      "grid_warning_active": {
+        "name": "Grid warning active"
       }
     }
   }

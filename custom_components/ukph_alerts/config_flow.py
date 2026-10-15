@@ -23,6 +23,14 @@ from homeassistant.helpers.selector import (
 from homeassistant.util import slugify
 
 from .const import (
+    CONF_ALERT_GRID,
+    CONF_ALERT_HEALTH,
+    CONF_ALERT_POWER,
+    CONF_ALERT_THREAT,
+    DEFAULT_ALERT_GRID,
+    DEFAULT_ALERT_HEALTH,
+    DEFAULT_ALERT_POWER,
+    DEFAULT_ALERT_THREAT,
     CONF_ALL_CLEAR,
     CONF_MIN_FLOOD,
     CONF_MIN_MET,
@@ -62,6 +70,10 @@ def guess_region(lat: float | None, lon: float | None) -> str:
 MET_LEVELS = [("yellow", "Yellow, amber and red"), ("amber", "Amber and red"), ("red", "Red only")]
 FLOOD_LEVELS = [("flood_alert", "Flood alerts and above"), ("flood_warning", "Flood warnings and severe"),
                 ("severe_flood_warning", "Severe flood warnings only")]
+POWER_ALERTS = [("off", "Off"), ("near", "Within 2 km of home"), ("radius", "Anywhere in my search radius")]
+HEALTH_ALERTS = [("off", "Off"), ("yellow", "Yellow, amber and red"), ("amber", "Amber and red")]
+GRID_ALERTS = [("off", "Off"), ("margin_notice", "Any grid notice, including margin notices"),
+               ("high_risk", "Only a high risk of demand reduction or worse")]
 RIVER_LEVELS = [("off", "Off"), ("high", "Above its normal range"), ("very_high", "Above its highest recent level"),
                 ("very_high_rising", "Above its highest recent level and still rising")]
 
@@ -107,6 +119,10 @@ def _schema(hass: HomeAssistant, current: dict[str, Any]) -> vol.Schema:
     fields[vol.Required(CONF_MIN_MET, default=current[CONF_MIN_MET])] = _select(MET_LEVELS)
     fields[vol.Required(CONF_MIN_FLOOD, default=current[CONF_MIN_FLOOD])] = _select(FLOOD_LEVELS)
     fields[vol.Required(CONF_RIVER_ALERT, default=current[CONF_RIVER_ALERT])] = _select(RIVER_LEVELS)
+    fields[vol.Required(CONF_ALERT_POWER, default=current[CONF_ALERT_POWER])] = _select(POWER_ALERTS)
+    fields[vol.Required(CONF_ALERT_HEALTH, default=current[CONF_ALERT_HEALTH])] = _select(HEALTH_ALERTS)
+    fields[vol.Required(CONF_ALERT_THREAT, default=current[CONF_ALERT_THREAT])] = BooleanSelector()
+    fields[vol.Required(CONF_ALERT_GRID, default=current[CONF_ALERT_GRID])] = _select(GRID_ALERTS)
     fields[vol.Required(CONF_ALL_CLEAR, default=current[CONF_ALL_CLEAR])] = BooleanSelector()
     return vol.Schema(fields)
 
@@ -124,6 +140,10 @@ def _defaults(hass: HomeAssistant, existing: dict[str, Any] | None) -> dict[str,
         CONF_MIN_FLOOD: existing.get(CONF_MIN_FLOOD, DEFAULT_MIN_FLOOD),
         CONF_RIVER_ALERT: existing.get(CONF_RIVER_ALERT, DEFAULT_RIVER_ALERT),
         CONF_ALL_CLEAR: existing.get(CONF_ALL_CLEAR, DEFAULT_ALL_CLEAR),
+        CONF_ALERT_POWER: existing.get(CONF_ALERT_POWER, DEFAULT_ALERT_POWER),
+        CONF_ALERT_HEALTH: existing.get(CONF_ALERT_HEALTH, DEFAULT_ALERT_HEALTH),
+        CONF_ALERT_THREAT: existing.get(CONF_ALERT_THREAT, DEFAULT_ALERT_THREAT),
+        CONF_ALERT_GRID: existing.get(CONF_ALERT_GRID, DEFAULT_ALERT_GRID),
     }
 
 

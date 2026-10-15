@@ -5,13 +5,14 @@ import logging
 
 DOMAIN = "ukph_alerts"
 NAME = "UK Prepper Hub Alerts"
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 LOGGER = logging.getLogger(__package__)
 
 USER_AGENT = f"UKPH-Alerts-HomeAssistant/{VERSION}"
 
 CONF_REGION = "met_office_region"
 CONF_RADIUS = "flood_radius_km"
+CONF_SIDEBAR = "show_in_sidebar"
 DEFAULT_RADIUS = 10
 MIN_RADIUS = 1
 MAX_RADIUS = 50
@@ -36,6 +37,32 @@ MET_OFFICE_REGIONS = {
     "sw": "South West England",
     "se": "London & South East England",
 }
+
+# Representative points in each Met Office region, used only to pre-select the dropdown from HA's home location.
+MET_OFFICE_REGION_POINTS = {
+    "os": [(59.0, -3.0), (60.3, -1.3)],
+    "he": [(57.5, -4.4), (57.9, -5.4), (58.3, -6.4), (56.8, -5.2)],
+    "gr": [(57.15, -2.1), (57.4, -3.0), (57.6, -2.6)],
+    "st": [(55.86, -4.25), (55.5, -4.6), (56.2, -5.5)],
+    "ta": [(56.46, -2.97), (56.12, -3.94), (56.2, -3.2), (56.7, -3.5)],
+    "dg": [(55.95, -3.19), (55.07, -3.6), (55.6, -2.8)],
+    "ni": [(54.6, -5.93), (54.6, -6.7), (55.0, -7.3), (54.3, -7.6)],
+    "wl": [(53.2, -4.1), (52.4, -4.0), (51.48, -3.18), (51.65, -3.94), (52.1, -3.4), (53.05, -3.0)],
+    "nw": [(53.48, -2.24), (53.4, -2.98), (54.05, -2.8), (54.6, -3.1)],
+    "ne": [(54.97, -1.61), (54.57, -1.23), (54.78, -1.57), (55.4, -1.7)],
+    "yh": [(53.8, -1.55), (53.38, -1.47), (53.74, -0.33), (54.1, -1.0), (54.3, -0.5)],
+    "wm": [(52.48, -1.9), (52.41, -1.51), (52.7, -2.75), (52.06, -2.7), (52.9, -2.1)],
+    "em": [(52.95, -1.15), (52.64, -1.13), (53.23, -0.54), (52.92, -1.48), (52.25, -0.89)],
+    "ee": [(52.2, 0.12), (52.63, 1.3), (52.06, 1.15), (51.75, 0.47), (52.13, -0.47), (51.8, -0.2)],
+    "sw": [(51.86, -2.24), (50.72, -3.53), (50.37, -4.14), (51.45, -2.59), (50.72, -1.88), (51.06, -1.31), (50.26, -5.05)],
+    "se": [(52.04, -0.76), (51.63, -0.75), (51.5, -0.12), (51.27, 1.08), (50.83, -0.14), (51.75, -1.26), (51.45, -0.97), (51.0, -0.9)],
+}
+
+PANEL_URL_PATH = "uk-prepper-hub"
+PANEL_TITLE = "UK Prepper Hub"
+PANEL_ICON = "mdi:shield-alert"
+PANEL_COMPONENT = "ukph-alerts-panel"
+STATIC_URL = "/ukph_alerts_static"
 
 MET_OFFICE_URL = "https://www.metoffice.gov.uk/public/data/PWSCache/WarningsRSS/Region/{region}"
 EA_FLOODS_URL = "https://environment.data.gov.uk/flood-monitoring/id/floods"

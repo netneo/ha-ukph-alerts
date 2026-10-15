@@ -6,9 +6,9 @@ A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's d
 - **Environment Agency flood warnings** near your home (England only)
 - **UK Prepper Hub Daily News**: today's headline, the Quick News Brief, and every story with a link
 
-Everything arrives as normal Home Assistant sensors, so you can show it on a dashboard or use it in automations, such as a phone alert when an amber warning or a flood warning is issued near you.
+**It works straight after install:** a **UK Prepper Hub** page appears in your Home Assistant sidebar with everything on it, so there are no dashboards to build. Everything also arrives as normal sensors, so you can use it in your own dashboards and automations, such as a phone alert when an amber warning or a flood warning is issued near you.
 
-![The ready-made Alerts dashboard](images/dashboard.png)
+![The UK Prepper Hub sidebar page (example with warnings in force)](images/sidebar-page.png)
 
 ---
 
@@ -17,15 +17,16 @@ Everything arrives as normal Home Assistant sensors, so you can show it on a das
 1. [Requirements](#requirements)
 2. [Installation](#installation)
 3. [Setting it up](#setting-it-up)
-4. [Finding your sensors](#finding-your-sensors)
-5. [Adding the ready-made dashboard](#adding-the-ready-made-dashboard)
-6. [Automation examples](#automation-examples)
-7. [Changing your settings](#changing-your-settings)
-8. [Updating and removing](#updating-and-removing)
-9. [Sensor reference](#sensor-reference)
-10. [Troubleshooting](#troubleshooting)
-11. [Privacy](#privacy)
-12. [Data sources and attribution](#data-sources-and-attribution)
+4. [The UK Prepper Hub page](#the-uk-prepper-hub-page)
+5. [Finding your sensors](#finding-your-sensors)
+6. [Optional: a dashboard of your own](#optional-a-dashboard-of-your-own)
+7. [Automation examples](#automation-examples)
+8. [Changing your settings](#changing-your-settings)
+9. [Updating and removing](#updating-and-removing)
+10. [Sensor reference](#sensor-reference)
+11. [Troubleshooting](#troubleshooting)
+12. [Privacy](#privacy)
+13. [Data sources and attribution](#data-sources-and-attribution)
 
 ---
 
@@ -58,12 +59,24 @@ Everything arrives as normal Home Assistant sensors, so you can show it on a das
 
 1. Go to **Settings → Devices & services**.
 2. Click **+ Add integration** (bottom right) and search for **UK Prepper Hub Alerts**.
-3. Fill in the two settings:
-   - **Met Office warning region**: pick your area, e.g. *East of England*. Choose *Whole UK* if you want every warning in the country.
+3. Check the settings. They're already filled in for you:
+   - **Met Office warning region**: picked automatically from your Home Assistant home location. Change it if it's wrong, which can happen if you live near a regional border. Choose *Whole UK* if you want every warning in the country.
    - **Flood warning search radius**: how far from your home to look for flood warnings, in km. 10 km is a good start.
-4. Click **Submit**. Your sensors appear straight away.
+   - **Show UK Prepper Hub in the sidebar**: on by default.
+4. Click **Submit**. Your sensors appear straight away, and so does **UK Prepper Hub** in the sidebar.
 
 > Only one copy of the integration can be set up per Home Assistant install.
+
+## The UK Prepper Hub page
+
+Click **UK Prepper Hub** in the sidebar. You'll see:
+
+- **Warning badges** at the top, coloured yellow, amber or red when something is in force.
+- **Met Office warnings** for your region, each with its times, the areas affected and a link to the full warning.
+- **Flood alerts and warnings** within your radius, each with the Environment Agency's message and a link to GOV.UK.
+- **Today's UK Prepper Hub news**: the headline, the Quick News Brief, and every story grouped by section, each linking to that story.
+
+It follows your Home Assistant theme (light or dark) and works on phones and tablets. Everyone in the household can see it, not just admins. To hide it, turn off **Show UK Prepper Hub in the sidebar** under [Configure](#changing-your-settings).
 
 ## Finding your sensors
 
@@ -82,9 +95,11 @@ The sensors are:
 
 Click any sensor and open **Attributes** to see the full details: each warning's areas and times, the news brief, the list of stories, and so on.
 
-## Adding the ready-made dashboard
+## Optional: a dashboard of your own
 
-The dashboard in the screenshot above is included in this repository as [`examples/alerts-dashboard.yaml`](examples/alerts-dashboard.yaml).
+You don't need this, because the sidebar page already shows everything. But if you'd like the same information as cards you can rearrange, a ready-made dashboard is included as [`examples/alerts-dashboard.yaml`](examples/alerts-dashboard.yaml):
+
+![The optional Alerts dashboard](images/dashboard.png)
 
 1. Go to **Settings → Dashboards → + Add dashboard → New dashboard from scratch**.
 2. Give it a name such as *Alerts*, pick an icon such as `mdi:alert-octagon`, and click **Create**.
@@ -162,7 +177,7 @@ actions:
 
 ## Changing your settings
 
-**Settings → Devices & services → UK Prepper Hub Alerts → Configure** lets you change the Met Office region or flood radius at any time. The integration reloads by itself, so there's no need to remove and re-add it.
+**Settings → Devices & services → UK Prepper Hub Alerts → Configure** lets you change the Met Office region, the flood radius, or whether the page shows in the sidebar, at any time. There's also a **Change region or radius** link at the bottom of the warnings on the UK Prepper Hub page. The integration reloads by itself, so there's no need to remove and re-add it.
 
 The flood search always uses Home Assistant's current home location. If you correct that location, the flood warnings follow it automatically.
 
@@ -195,6 +210,7 @@ The long attributes (`warnings`, `brief`, `stories`) are kept out of Home Assist
 
 ## Troubleshooting
 
+- **No UK Prepper Hub in the sidebar:** check **Show UK Prepper Hub in the sidebar** is on under Configure, then refresh your browser.
 - **Can't find the integration in "Add integration":** make sure you restarted Home Assistant after installing, then refresh your browser. A hard refresh (Ctrl+F5) may be needed.
 - **A sensor shows "Unavailable":** that source couldn't be reached on the last check. The other sensors carry on working, and it retries by itself. Check **Settings → System → Logs** for lines mentioning `ukph_alerts`.
 - **Flood warnings always 0 in Scotland, Wales or Northern Ireland:** expected. The Environment Agency only covers England. Those nations have their own services (SEPA, Natural Resources Wales, DfI Rivers), which aren't supported yet.

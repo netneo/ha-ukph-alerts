@@ -12,12 +12,14 @@ from .api import UkphApi
 from .const import (
     CONF_RADIUS,
     CONF_REGION,
+    CONF_SIDEBAR,
     DEFAULT_RADIUS,
     INTERVAL_FLOODS,
     INTERVAL_MET_OFFICE,
     INTERVAL_NEWS,
 )
 from .coordinator import UkphConfigEntry, UkphCoordinator, UkphData
+from .panel import async_register_panel, async_remove_panel
 
 PLATFORMS = [Platform.SENSOR]
 
@@ -48,6 +50,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: UkphConfigEntry) -> bool
     entry.runtime_data = data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if _option(entry, CONF_SIDEBAR, True):
+        await async_register_panel(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
 
@@ -57,4 +61,5 @@ async def _async_reload(hass: HomeAssistant, entry: UkphConfigEntry) -> None:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: UkphConfigEntry) -> bool:
+    async_remove_panel(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

@@ -5,11 +5,16 @@
     "@netneo"
   ],
   "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom"
+  ],
   "documentation": "https://github.com/netneo/ha-ukph-alerts",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/netneo/ha-ukph-alerts/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.1.1"
+  "version": "0.2.0"
 }

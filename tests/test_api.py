@@ -91,6 +91,19 @@ def test_news_sample():
                for s in n["stories"])
 
 
+def test_guess_region():
+    from custom_components.ukph_alerts.config_flow import guess_region
+    cases = {(52.2, -0.2): "ee", (51.5, -0.12): "se", (53.48, -2.24): "nw", (55.95, -3.19): "dg",
+             (57.48, -4.22): "he", (54.6, -5.93): "ni", (51.48, -3.18): "wl", (50.37, -4.14): "sw",
+             (52.48, -1.9): "wm", (53.8, -1.55): "yh", (54.97, -1.61): "ne", (57.15, -2.09): "gr",
+             (55.86, -4.25): "st", (56.46, -2.97): "ta", (60.15, -1.15): "os", (52.95, -1.15): "em",
+             (52.2, -0.2): "ee", (51.62, -3.94): "wl", (53.22, -4.13): "wl", (52.57, -0.24): "ee",
+             (51.38, -2.36): "sw", (51.9, -2.08): "sw", (53.0, -2.18): "wm", (52.04, -0.76): "se",
+             (48.85, 2.35): "UK", (None, None): "UK"}
+    wrong = {k: (guess_region(*k), v) for k, v in cases.items() if guess_region(*k) != v}
+    assert not wrong, wrong
+
+
 async def live():
     import aiohttp
     from custom_components.ukph_alerts.api import UkphApi

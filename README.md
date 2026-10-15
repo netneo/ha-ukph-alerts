@@ -6,9 +6,15 @@ A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's d
 - **Environment Agency flood warnings** near your home (England only)
 - **UK Prepper Hub Daily News**: today's headline, the Quick News Brief, and every story with a link
 
-**It works straight after install:** a **UK Prepper Hub** page appears in your Home Assistant sidebar with everything on it, so there are no dashboards to build. Everything also arrives as normal sensors, so you can use it in your own dashboards and automations, such as a phone alert when an amber warning or a flood warning is issued near you.
+### Works straight after install, with nothing to build
 
-![The UK Prepper Hub sidebar page (example with warnings in force)](images/sidebar-page.png)
+- **It sets itself up.** Your Met Office region is picked automatically from your Home Assistant home location, so in most cases you just click **Submit**.
+- **It adds a UK Prepper Hub entry to your sidebar menu** with all your warnings and today's news on one page, so there are no dashboards or cards to build.
+- **The menu entry is removable.** Don't want it in your sidebar? Switch it off any time under **Configure**, and switch it back on just as easily. The sensors keep working either way.
+- **It also gives you normal sensors** for your own dashboards and automations, such as a phone alert when an amber warning or a flood warning is issued near you.
+
+![The UK Prepper Hub page with warnings in force: red, amber and yellow Met Office warnings and all three levels of flood warning](images/warning-levels.png)
+<sub>Example data showing every warning level. With nothing in force, each section simply says so.</sub>
 
 ---
 
@@ -76,7 +82,21 @@ Click **UK Prepper Hub** in the sidebar. You'll see:
 - **Flood alerts and warnings** within your radius, each with the Environment Agency's message and a link to GOV.UK.
 - **Today's UK Prepper Hub news**: the headline, the Quick News Brief, and every story grouped by section, each linking to that story.
 
-It follows your Home Assistant theme (light or dark) and works on phones and tablets. Everyone in the household can see it, not just admins. To hide it, turn off **Show UK Prepper Hub in the sidebar** under [Configure](#changing-your-settings).
+How the warnings are shown:
+
+| Level | Met Office | Environment Agency |
+|---|---|---|
+| 🔴 Red | Red warning | Severe flood warning (danger to life) |
+| 🟠 Amber / orange | Amber warning | Flood warning (flooding expected) |
+| 🟡 Yellow | Yellow warning | Flood alert (flooding possible) |
+
+The badges at the top always show the highest level currently in force.
+
+It follows your Home Assistant theme (light or dark) and works on phones and tablets. Everyone in the household can see it, not just admins.
+
+<img src="images/phone-dark.png" alt="The UK Prepper Hub page on a phone in dark mode" width="320">
+
+**Removing the menu entry:** go to **Settings → Devices & services → UK Prepper Hub Alerts → Configure**, turn off **Show UK Prepper Hub in the sidebar**, and click **Submit**. The entry disappears straight away and your sensors and automations carry on working. Turn it back on the same way.
 
 ## Finding your sensors
 

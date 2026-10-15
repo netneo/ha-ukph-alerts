@@ -6,28 +6,94 @@ A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's d
 - **Environment Agency flood warnings** near your home (England only)
 - **UK Prepper Hub Daily News**: today's headline, the Quick News Brief, and every story with a link
 
-All of these are normal Home Assistant sensors, so you can show them on a dashboard or use them in automations, such as a phone alert when an amber warning or a flood warning is issued near you.
+Everything arrives as normal Home Assistant sensors, so you can show it on a dashboard or use it in automations, such as a phone alert when an amber warning or a flood warning is issued near you.
 
-## Installation (HACS)
+![The ready-made Alerts dashboard](images/dashboard.png)
 
-1. In HACS, open the ⋮ menu and choose **Custom repositories**. Add `https://github.com/netneo/ha-ukph-alerts` with type **Integration**.
-2. Search for **UK Prepper Hub Alerts**, install it, and restart Home Assistant.
-3. Go to **Settings → Devices & services → Add integration → UK Prepper Hub Alerts**.
-4. Pick your Met Office region and a flood search radius. You can change both later with **Configure**.
+---
 
-## Sensors
+## Contents
 
-| Sensor | State | Attributes |
-|---|---|---|
-| Met Office warnings | Number of warnings in force | `highest_level`, `region`, `warnings` (level, hazard, areas, valid_from, valid_to, link) |
-| Met Office highest warning | `none` / `yellow` / `amber` / `red` | |
-| Flood warnings nearby | Number of active flood alerts/warnings | `highest_severity`, `radius_km`, `warnings` (severity, description, county, river_or_sea, message, link) |
-| Flood highest severity | `none` / `flood_alert` / `flood_warning` / `severe_flood_warning` | |
-| Daily news | Title of today's post | `link`, `published`, `brief`, `story_count`, `stories` (section, location, headline, status, url) |
+1. [Requirements](#requirements)
+2. [Installation](#installation)
+3. [Setting it up](#setting-it-up)
+4. [Finding your sensors](#finding-your-sensors)
+5. [Adding the ready-made dashboard](#adding-the-ready-made-dashboard)
+6. [Automation examples](#automation-examples)
+7. [Changing your settings](#changing-your-settings)
+8. [Updating and removing](#updating-and-removing)
+9. [Sensor reference](#sensor-reference)
+10. [Troubleshooting](#troubleshooting)
+11. [Privacy](#privacy)
+12. [Data sources and attribution](#data-sources-and-attribution)
 
-How often each source is checked: Met Office every 10 minutes, Environment Agency every 15 minutes, UK Prepper Hub every 30 minutes.
+---
 
-## Example: news card
+## Requirements
+
+- Home Assistant 2025.1 or newer
+- [HACS](https://hacs.xyz/) installed, for the easy install route. Manual install works without it.
+- Your home location set in Home Assistant (**Settings → System → General**), which the flood warnings use
+- An internet connection. No accounts or API keys are needed.
+
+## Installation
+
+### Option A: through HACS (recommended)
+
+1. Open **HACS** in the Home Assistant sidebar.
+2. Click the **⋮** menu (top right) and choose **Custom repositories**.
+3. In **Repository**, paste:
+   `https://github.com/netneo/ha-ukph-alerts`
+   Set **Type** to **Integration**, then click **Add**.
+4. Close that box, search HACS for **UK Prepper Hub Alerts**, open it and click **Download**, then **Download** again to confirm.
+5. **Restart Home Assistant** (**Settings → System → ⏻ top right → Restart Home Assistant**).
+
+### Option B: manual install
+
+1. Download the latest release from the [Releases page](https://github.com/netneo/ha-ukph-alerts/releases).
+2. Copy the `custom_components/ukph_alerts` folder into your Home Assistant `config/custom_components/` folder, creating `custom_components` if it doesn't exist. You should end up with `config/custom_components/ukph_alerts/manifest.json`.
+3. Restart Home Assistant.
+
+## Setting it up
+
+1. Go to **Settings → Devices & services**.
+2. Click **+ Add integration** (bottom right) and search for **UK Prepper Hub Alerts**.
+3. Fill in the two settings:
+   - **Met Office warning region**: pick your area, e.g. *East of England*. Choose *Whole UK* if you want every warning in the country.
+   - **Flood warning search radius**: how far from your home to look for flood warnings, in km. 10 km is a good start.
+4. Click **Submit**. Your sensors appear straight away.
+
+> Only one copy of the integration can be set up per Home Assistant install.
+
+## Finding your sensors
+
+- **Settings → Devices & services → UK Prepper Hub Alerts → 1 service** lists all five sensors.
+- Or go to **Settings → Devices & services → Entities** and search for `uk prepper`.
+
+The sensors are:
+
+| Entity ID | Shows |
+|---|---|
+| `sensor.uk_prepper_hub_alerts_met_office_warnings` | Number of Met Office warnings in force |
+| `sensor.uk_prepper_hub_alerts_met_office_highest_warning` | `none`, `yellow`, `amber` or `red` |
+| `sensor.uk_prepper_hub_alerts_flood_warnings_nearby` | Number of active flood alerts/warnings within your radius |
+| `sensor.uk_prepper_hub_alerts_flood_highest_severity` | `none`, `flood_alert`, `flood_warning` or `severe_flood_warning` |
+| `sensor.uk_prepper_hub_alerts_daily_news` | Title of today's UK Prepper Hub news post |
+
+Click any sensor and open **Attributes** to see the full details: each warning's areas and times, the news brief, the list of stories, and so on.
+
+## Adding the ready-made dashboard
+
+The dashboard in the screenshot above is included in this repository as [`examples/alerts-dashboard.yaml`](examples/alerts-dashboard.yaml).
+
+1. Go to **Settings → Dashboards → + Add dashboard → New dashboard from scratch**.
+2. Give it a name such as *Alerts*, pick an icon such as `mdi:alert-octagon`, and click **Create**.
+3. Open the new dashboard from the sidebar.
+4. Click the **pencil** icon (top right), then **⋮ → Raw configuration editor**.
+5. Delete everything in the editor and paste in the whole of [`alerts-dashboard.yaml`](examples/alerts-dashboard.yaml). Use the **Raw** or copy button on GitHub to get it all.
+6. Click **Save**, then **✕** and **Done**.
+
+**Just want the news on an existing dashboard?** Edit the dashboard, **+ Add card → Markdown**, and paste this:
 
 ```yaml
 type: markdown
@@ -37,24 +103,110 @@ content: >
   {{ state_attr('sensor.uk_prepper_hub_alerts_daily_news', 'brief') }}
 ```
 
-## Example: automation
+## Automation examples
+
+To add one of these, go to **Settings → Automations & scenes → + Create automation → ⋮ → Edit in YAML**, paste it in, and save.
+
+Change `notify.mobile_app_your_phone` to your own phone. Look for it under **Settings → Devices & services → Mobile App**. Its entity ID starts with `notify.mobile_app_`.
+
+**Phone alert for an amber or red Met Office warning:**
 
 ```yaml
+alias: Met Office amber or red warning
 triggers:
   - trigger: state
     entity_id: sensor.uk_prepper_hub_alerts_met_office_highest_warning
     to: [amber, red]
 actions:
-  - action: notify.notify
+  - action: notify.mobile_app_your_phone
     data:
+      title: "⚠️ Met Office {{ trigger.to_state.state }} warning"
       message: >
-        Met Office {{ trigger.to_state.state }} warning in force for your region.
+        {% set w = state_attr('sensor.uk_prepper_hub_alerts_met_office_warnings', 'warnings')[0] %}
+        {{ w.level | capitalize }} warning of {{ w.hazard }}{% if w.valid_from %} from
+        {{ as_timestamp(w.valid_from) | timestamp_custom('%a %H:%M') }}{% endif %}.
 ```
+
+**Phone alert for any flood warning near you:**
+
+```yaml
+alias: Flood warning nearby
+triggers:
+  - trigger: state
+    entity_id: sensor.uk_prepper_hub_alerts_flood_highest_severity
+    to: [flood_warning, severe_flood_warning]
+actions:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: "🌊 Flood warning near home"
+      message: >
+        {% set w = state_attr('sensor.uk_prepper_hub_alerts_flood_warnings_nearby', 'warnings')[0] %}
+        {{ w.severity | replace('_', ' ') | capitalize }}: {{ w.description }}
+```
+
+**Morning news headline:**
+
+```yaml
+alias: UK Prepper Hub morning news
+triggers:
+  - trigger: time
+    at: "09:00:00"
+actions:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: "{{ states('sensor.uk_prepper_hub_alerts_daily_news') }}"
+      message: "{{ state_attr('sensor.uk_prepper_hub_alerts_daily_news', 'brief')[:250] }}…"
+      data:
+        url: "{{ state_attr('sensor.uk_prepper_hub_alerts_daily_news', 'link') }}"
+```
+
+## Changing your settings
+
+**Settings → Devices & services → UK Prepper Hub Alerts → Configure** lets you change the Met Office region or flood radius at any time. The integration reloads by itself, so there's no need to remove and re-add it.
+
+The flood search always uses Home Assistant's current home location. If you correct that location, the flood warnings follow it automatically.
+
+## Updating and removing
+
+- **Updating (HACS):** HACS shows an update notice when a new version is released. Click **Update**, then restart Home Assistant.
+- **Removing:**
+  1. **Settings → Devices & services → UK Prepper Hub Alerts → ⋮ → Delete**.
+  2. In HACS, open the integration, choose **⋮ → Remove**, and restart.
+
+## Sensor reference
+
+| Sensor | State | Attributes |
+|---|---|---|
+| Met Office warnings | Number of warnings in force | `region`, `highest_level`, `warnings`: a list with `level`, `hazard`, `region`, `areas`, `valid_from`, `valid_to`, `title`, `summary`, `link` |
+| Met Office highest warning | `none` / `yellow` / `amber` / `red` | |
+| Flood warnings nearby | Number of active flood alerts/warnings | `radius_km`, `highest_severity`, `warnings`: a list with `severity`, `description`, `county`, `river_or_sea`, `message`, `time_raised`, `link` |
+| Flood highest severity | `none` / `flood_alert` / `flood_warning` / `severe_flood_warning` | |
+| Daily news | Title of today's post | `link`, `published`, `brief`, `story_count`, `stories`: a list with `section`, `section_slug`, `subsection`, `location`, `headline`, `status`, `url` |
+
+How often each source is checked:
+
+| Source | Every |
+|---|---|
+| Met Office | 10 minutes |
+| Environment Agency | 15 minutes |
+| UK Prepper Hub | 30 minutes |
+
+The long attributes (`warnings`, `brief`, `stories`) are kept out of Home Assistant's history database, so they don't make it grow.
+
+## Troubleshooting
+
+- **Can't find the integration in "Add integration":** make sure you restarted Home Assistant after installing, then refresh your browser. A hard refresh (Ctrl+F5) may be needed.
+- **A sensor shows "Unavailable":** that source couldn't be reached on the last check. The other sensors carry on working, and it retries by itself. Check **Settings → System → Logs** for lines mentioning `ukph_alerts`.
+- **Flood warnings always 0 in Scotland, Wales or Northern Ireland:** expected. The Environment Agency only covers England. Those nations have their own services (SEPA, Natural Resources Wales, DfI Rivers), which aren't supported yet.
+- **Wrong area's flood warnings:** check your home location under **Settings → System → General**.
+- **Found a bug?** Please [open an issue](https://github.com/netneo/ha-ukph-alerts/issues) and include any `ukph_alerts` log lines.
 
 ## Privacy
 
 - Flood warnings use the home location set in Home Assistant, **rounded to about 1 km**, and send it only to the Environment Agency's API.
 - Your location is never stored by this integration and never sent to UK Prepper Hub or the Met Office.
+- No accounts, no tracking cookies, no API keys.
+- Links to UK Prepper Hub include a `utm_source=homeassistant` tag, so the site can see that visits came from Home Assistant.
 
 ## Data sources and attribution
 
@@ -62,4 +214,8 @@ actions:
 - Flood warnings from the [Environment Agency](https://check-for-flooding.service.gov.uk/), used under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). This data covers England only.
 - News from [UK Prepper Hub](https://ukprepperhub.co.uk/).
 
-This integration is not affiliated with or endorsed by the Met Office or the Environment Agency.
+This integration is not affiliated with or endorsed by the Met Office or the Environment Agency. Always follow official advice in an emergency.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

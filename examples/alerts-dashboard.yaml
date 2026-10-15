@@ -1,0 +1,69 @@
+# UK Prepper Hub Alerts - ready-made dashboard
+# Settings > Dashboards > Add dashboard > New dashboard from scratch, open it,
+# then pencil icon > three-dot menu > Raw configuration editor, replace everything with this file, Save.
+title: Alerts
+views:
+- title: Alerts
+  path: alerts
+  type: sections
+  max_columns: 2
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: Warnings
+      icon: mdi:alert-octagon
+    - type: tile
+      entity: sensor.uk_prepper_hub_alerts_met_office_highest_warning
+      name: Met Office
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.uk_prepper_hub_alerts_flood_highest_severity
+      name: Floods nearby
+      grid_options:
+        columns: 6
+    - type: markdown
+      content: |-
+        {% set mo = state_attr('sensor.uk_prepper_hub_alerts_met_office_warnings','warnings') or [] %}
+        {% set fl = state_attr('sensor.uk_prepper_hub_alerts_flood_warnings_nearby','warnings') or [] %}
+        ### 🌦️ Met Office: {{ state_attr('sensor.uk_prepper_hub_alerts_met_office_warnings','region') }}
+        {% if mo %}{% for w in mo %}
+        **{{ (w.level or 'Unknown') | capitalize }} warning: {{ w.hazard or w.title }}**{% if w.valid_from and w.valid_to %}<br>{{ as_timestamp(w.valid_from) | timestamp_custom('%a %d %b %H:%M') }} to {{ as_timestamp(w.valid_to) | timestamp_custom('%a %d %b %H:%M') }}{% endif %}
+        {% if w.areas %}<br>{{ w.areas | join(', ') }}{% endif %}{% if w.link %}<br>[Full details on the Met Office site]({{ w.link }}){% endif %}
+        {% endfor %}{% else %}
+        No weather warnings in force.
+        {% endif %}
+
+        ### 🌊 Flood warnings within {{ state_attr('sensor.uk_prepper_hub_alerts_flood_warnings_nearby','radius_km') | int }} km
+        {% if fl %}{% for w in fl %}
+        **{{ w.severity | replace('_',' ') | title }}: {{ w.description }}**{% if w.river_or_sea %}<br>{{ w.river_or_sea }}{% endif %}{% if w.link %}<br>[Full details on GOV.UK]({{ w.link }}){% endif %}
+        {% endfor %}{% else %}
+        No flood alerts or warnings nearby.
+        {% endif %}
+      grid_options:
+        columns: full
+  - type: grid
+    cards:
+    - type: heading
+      heading: UK Prepper Hub daily news
+      icon: mdi:newspaper-variant-outline
+    - type: markdown
+      content: |-
+        {% set e = 'sensor.uk_prepper_hub_alerts_daily_news' %}
+        ## [{{ states(e) }}]({{ state_attr(e,'link') }})
+        {{ state_attr(e,'brief') }}
+
+        _Published {{ as_timestamp(state_attr(e,'published')) | timestamp_custom('%H:%M, %a %d %b') }} · {{ state_attr(e,'story_count') }} stories_
+      grid_options:
+        columns: full
+    - type: markdown
+      content: |-
+        {% set s = state_attr('sensor.uk_prepper_hub_alerts_daily_news','stories') or [] %}
+        {% for sec in s | map(attribute='section') | unique %}
+        **{{ sec }}**
+        {% for x in s | selectattr('section','eq',sec) %}- [{% if x.location %}{{ x.location }}: {% endif %}{{ x.headline }}]({{ x.url }}){% if x.status and x.status != 'Confirmed' %} _({{ x.status }})_{% endif %}
+        {% endfor %}
+        {% endfor %}
+      grid_options:
+        columns: full

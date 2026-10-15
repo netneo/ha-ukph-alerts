@@ -3,11 +3,16 @@
     "step": {
       "user": {
         "title": "UK Prepper Hub Alerts",
-        "description": "Met Office weather warnings for your region, Environment Agency flood warnings near your home (England only), and the UK Prepper Hub daily news.\n\nWe've picked **{region}** from your Home Assistant home location. Change it if that's wrong. Flood warnings use your home location, rounded to about 1 km.",
+        "description": "Met Office weather warnings, flood warnings and river levels near your home (England for now), and the UK Prepper Hub daily news.\n\nWe've picked **{region}** from your Home Assistant home location. Change it if that's wrong. Flood warnings and river levels use your home location, rounded to about 1 km.\n\nPhones ticked below get an alert when a warning at or above the levels you choose is issued near you.",
         "data": {
           "met_office_region": "Met Office warning region",
-          "flood_radius_km": "Flood warning search radius",
-          "show_in_sidebar": "Show UK Prepper Hub in the sidebar"
+          "flood_radius_km": "Search radius for flood warnings and river levels",
+          "show_in_sidebar": "Show UK Prepper Hub in the sidebar",
+          "notify_services": "Send alerts to these phones",
+          "alert_min_met_office": "Alert me for Met Office warnings",
+          "alert_min_flood": "Alert me for flood warnings",
+          "alert_rivers": "Alert me when a river near me is",
+          "alert_all_clear": "Send an \"all clear\" when it ends"
         }
       }
     },
@@ -22,8 +27,13 @@
         "title": "UK Prepper Hub Alerts",
         "data": {
           "met_office_region": "Met Office warning region",
-          "flood_radius_km": "Flood warning search radius",
-          "show_in_sidebar": "Show UK Prepper Hub in the sidebar"
+          "flood_radius_km": "Search radius for flood warnings and river levels",
+          "show_in_sidebar": "Show UK Prepper Hub in the sidebar",
+          "notify_services": "Send alerts to these phones",
+          "alert_min_met_office": "Alert me for Met Office warnings",
+          "alert_min_flood": "Alert me for flood warnings",
+          "alert_rivers": "Alert me when a river near me is",
+          "alert_all_clear": "Send an \"all clear\" when it ends"
         }
       }
     }
@@ -56,6 +66,20 @@
       },
       "daily_news": {
         "name": "Daily news"
+      },
+      "rivers_above_normal": {
+        "name": "Rivers above normal"
+      }
+    },
+    "binary_sensor": {
+      "weather_warning_active": {
+        "name": "Weather warning active"
+      },
+      "flood_warning_nearby": {
+        "name": "Flood warning nearby"
+      },
+      "river_high_nearby": {
+        "name": "River high nearby"
       }
     }
   }

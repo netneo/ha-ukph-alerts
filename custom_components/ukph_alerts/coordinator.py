@@ -49,6 +49,7 @@ class UkphData:
     met_office: UkphCoordinator
     floods: UkphCoordinator
     news: UkphCoordinator
+    rivers: UkphCoordinator
 
 
 type UkphConfigEntry = ConfigEntry[UkphData]

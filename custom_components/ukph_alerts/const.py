@@ -5,7 +5,7 @@ import logging
 
 DOMAIN = "ukph_alerts"
 NAME = "UK Prepper Hub Alerts"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 LOGGER = logging.getLogger(__package__)
 
 USER_AGENT = f"UKPH-Alerts-HomeAssistant/{VERSION}"
@@ -13,6 +13,16 @@ USER_AGENT = f"UKPH-Alerts-HomeAssistant/{VERSION}"
 CONF_REGION = "met_office_region"
 CONF_RADIUS = "flood_radius_km"
 CONF_SIDEBAR = "show_in_sidebar"
+CONF_NOTIFY = "notify_services"
+CONF_MIN_MET = "alert_min_met_office"
+CONF_MIN_FLOOD = "alert_min_flood"
+CONF_RIVER_ALERT = "alert_rivers"
+CONF_ALL_CLEAR = "alert_all_clear"
+DEFAULT_MIN_MET = "amber"
+DEFAULT_MIN_FLOOD = "flood_warning"
+DEFAULT_RIVER_ALERT = "very_high_rising"
+DEFAULT_ALL_CLEAR = True
+EVENT_NEW_WARNING = "ukph_alerts_new_warning"
 DEFAULT_RADIUS = 10
 MIN_RADIUS = 1
 MAX_RADIUS = 50
@@ -66,6 +76,12 @@ STATIC_URL = "/ukph_alerts_static"
 
 MET_OFFICE_URL = "https://www.metoffice.gov.uk/public/data/PWSCache/WarningsRSS/Region/{region}"
 EA_FLOODS_URL = "https://environment.data.gov.uk/flood-monitoring/id/floods"
+EA_STATIONS_URL = "https://environment.data.gov.uk/flood-monitoring/id/stations"
+EA_MEASURE_READINGS_URL = "https://environment.data.gov.uk/flood-monitoring/id/measures/{measure}/readings"
+EA_STATION_PAGE = "https://check-for-flooding.service.gov.uk/station/{rloi}"
+MAX_RIVER_STATIONS = 30
+RIVER_FETCH_CONCURRENCY = 4
+RIVER_TREND_THRESHOLD_M = 0.01
 UKPH_API = "https://ukprepperhub.co.uk/wp-json/wp/v2"
 UKPH_NEWS_CATEGORY_SLUG = "uk-prepper-daily-news"
 UKPH_NEWS_CATEGORY_FALLBACK = 16
@@ -74,6 +90,8 @@ UKPH_UTM = {"utm_source": "homeassistant", "utm_medium": "integration"}
 INTERVAL_MET_OFFICE = timedelta(minutes=10)
 INTERVAL_FLOODS = timedelta(minutes=15)
 INTERVAL_NEWS = timedelta(minutes=30)
+INTERVAL_RIVERS = timedelta(minutes=15)
+RIVER_STATION_REFRESH = timedelta(hours=24)
 
 MET_OFFICE_LEVELS = ["none", "yellow", "amber", "red"]
 # EA severityLevel -> enum state. 4 ("no longer in force") is not counted as active.
@@ -84,4 +102,6 @@ ATTRIBUTION_MET_OFFICE = "Weather warnings from the Met Office (metoffice.gov.uk
 ATTRIBUTION_EA = (
     "Flood warnings from the Environment Agency, under the Open Government Licence v3.0"
 )
+RIVER_STATUSES = ["low", "normal", "high", "very_high"]
+
 ATTRIBUTION_UKPH = "News from UK Prepper Hub (ukprepperhub.co.uk)"

@@ -4,6 +4,9 @@ const LEVEL_COLOURS = {
   red: "#d32f2f", amber: "#f57c00", yellow: "#fbc02d",
   severe_flood_warning: "#d32f2f", flood_warning: "#f57c00", flood_alert: "#fbc02d",
 };
+const RIVER_COLOURS = { very_high: "#d32f2f", high: "#f57c00", normal: "#43a047", low: "#1e88e5" };
+const RIVER_LABELS = { very_high: "Very high", high: "High", normal: "Normal", low: "Low" };
+const TREND_ARROWS = { rising: "▲", falling: "▼", steady: "▶" };
 const LEVEL_LABELS = {
   none: "None", yellow: "Yellow", amber: "Amber", red: "Red",
   flood_alert: "Flood alert", flood_warning: "Flood warning", severe_flood_warning: "Severe flood warning",
@@ -41,7 +44,7 @@ class UkphAlertsPanel extends HTMLElement {
 
   _render() {
     if (!this._hass || !this._panel) return;
-    const keys = ["met_office_warnings", "met_office_highest_level", "flood_warnings", "flood_highest_severity", "daily_news"];
+    const keys = ["met_office_warnings", "met_office_highest_level", "flood_warnings", "flood_highest_severity", "rivers_above_normal", "daily_news"];
     // hass updates many times a second; only redraw when one of our sensors actually changed.
     const sig = keys.map((k) => this._entity(k)?.last_updated).join("|") + this._hass.themes?.darkMode;
     if (sig === this._sig) return;
@@ -62,9 +65,9 @@ class UkphAlertsPanel extends HTMLElement {
       <div class="col">${this._news()}</div>`;
   }
 
-  _badge(label, state) {
-    const colour = LEVEL_COLOURS[state];
-    const text = LEVEL_LABELS[state] || "Unavailable";
+  _badge(label, state, override) {
+    const colour = override ? override.colour : LEVEL_COLOURS[state];
+    const text = override ? override.text : LEVEL_LABELS[state] || "Unavailable";
     return `<div class="badge ${colour ? "active" : ""}" style="${colour ? `--level:${colour}` : ""}">
       <div class="badge-label">${esc(label)}</div><div class="badge-state">${esc(text)}</div></div>`;
   }
@@ -116,17 +119,61 @@ class UkphAlertsPanel extends HTMLElement {
       <div class="badges">
         ${this._badge("Met Office", moLevel?.state)}
         ${this._badge("Floods nearby", flLevel?.state)}
+        ${this._badge("Rivers", null, this._riverBadge())}
       </div>
       <div class="card">
         <h2>Met Office warnings${region ? `: ${esc(region)}` : ""}</h2>
         ${moHtml}
         <h2>Flood warnings${radius ? ` within ${esc(Math.round(radius))} km` : ""}</h2>
         ${flHtml}
+        ${this._rivers()}
         <div class="footer">
-          <a href="${settings}">Change region or radius</a>
+          <a href="${settings}">Change region, radius or alerts</a>
           <span>${esc(mo?.attributes?.attribution || "")}${fl?.attributes?.attribution ? ` · ${esc(fl.attributes.attribution)}` : ""}</span>
         </div>
       </div>`;
+  }
+
+  _riverBadge() {
+    const r = this._entity("rivers_above_normal");
+    if (this._unavailable(r)) return { text: "Unavailable" };
+    const high = r.attributes.rivers_above_normal || [];
+    if (!high.length) return { text: "All normal" };
+    const worst = high.some((s) => s.status === "very_high") ? "very_high" : "high";
+    return { text: `${high.length} ${worst === "very_high" ? "very high" : "high"}`, colour: RIVER_COLOURS[worst] };
+  }
+
+  _rivers() {
+    const r = this._entity("rivers_above_normal");
+    const radius = r?.attributes?.radius_km;
+    const title = `<h2>River levels${radius ? ` within ${esc(Math.round(radius))} km` : ""}</h2>`;
+    if (this._unavailable(r)) return `${title}<p class="muted">Couldn't reach the Environment Agency. It will retry automatically.</p>`;
+    const stations = [...(r.attributes.stations || [])];
+    if (!stations.length) return `${title}<p class="ok">No river level stations within this distance.</p>`;
+    const order = { very_high: 0, high: 1 };
+    stations.sort((a, b) => (order[a.status] ?? 2) - (order[b.status] ?? 2) || a.distance_km - b.distance_km);
+    const rows = stations.map((s) => {
+      if (s.level == null) {
+        return `<div class="river"><div class="river-head"><span>${link(s.link, `${s.river} at ${s.station}`)}</span><span class="muted">No recent reading</span></div></div>`;
+      }
+      const top = Math.max(s.highest_recent ?? s.typical_high, s.typical_high, s.level);
+      const bottom = Math.min(s.typical_low, s.level);
+      const span = (top - bottom) * 1.1 || 1;
+      const pos = (v) => Math.max(0, Math.min(100, ((v - bottom) / span) * 100 + 4));
+      const colour = RIVER_COLOURS[s.status] || "var(--secondary-text-color)";
+      const change = s.change_1h_m == null ? "" : ` (${s.change_1h_m > 0 ? "+" : ""}${Math.round(s.change_1h_m * 1000)} mm/h)`;
+      return `<div class="river" style="--level:${colour}">
+        <div class="river-head">
+          <span>${link(s.link, `${s.river} at ${s.station}`)} <span class="meta">${esc(s.distance_km)} km</span></span>
+          <span class="river-state">${esc(Number(s.level).toFixed(2))} m <span class="arrow">${TREND_ARROWS[s.trend] || ""}</span> ${esc(RIVER_LABELS[s.status] || "")}</span>
+        </div>
+        <div class="bar"><div class="band" style="left:${pos(s.typical_low)}%;width:${pos(s.typical_high) - pos(s.typical_low)}%"></div><div class="marker" style="left:${pos(s.level)}%"></div></div>
+        <div class="meta">Normal ${esc(s.typical_low.toFixed(2))}–${esc(s.typical_high.toFixed(2))} m · ${esc(s.trend || "trend unknown")}${esc(change)}</div>
+      </div>`;
+    }).join("");
+    const shown = r.attributes.stations_shown, total = r.attributes.stations_in_radius;
+    const capped = total > shown ? `<p class="meta">Showing the nearest ${esc(shown)} of ${esc(total)} stations.</p>` : "";
+    return `${title}${rows}${capped}`;
   }
 
   _news() {
@@ -183,7 +230,14 @@ const STYLE = `
   .muted { color: var(--secondary-text-color); }
   .ok { color: var(--secondary-text-color); }
   .status { font-size: 12px; font-style: italic; color: var(--secondary-text-color); }
-  .badges { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .river { margin: 10px 0 14px; }
+  .river-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .river-state { font-weight: 500; color: var(--level); white-space: nowrap; }
+  .arrow { font-size: 11px; }
+  .bar { position: relative; height: 8px; border-radius: 4px; background: var(--divider-color); margin: 6px 0 4px; }
+  .band { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: rgba(67, 160, 71, 0.35); }
+  .marker { position: absolute; top: -3px; width: 4px; height: 14px; margin-left: -2px; border-radius: 2px; background: var(--level); }
   .badge { background: var(--ha-card-background, var(--card-background-color)); border-radius: var(--ha-card-border-radius, 12px);
     border: 1px solid var(--ha-card-border-color, var(--divider-color)); padding: 12px 16px; }
   .badge.active { border-left: 6px solid var(--level); }

@@ -16,6 +16,12 @@ import aiohttp
 
 from .const import (
     EA_FLOODS_URL,
+    EA_MEASURE_READINGS_URL,
+    EA_STATION_PAGE,
+    EA_STATIONS_URL,
+    MAX_RIVER_STATIONS,
+    RIVER_FETCH_CONCURRENCY,
+    RIVER_TREND_THRESHOLD_M,
     FLOOD_SEVERITIES,
     MET_OFFICE_LEVELS,
     MET_OFFICE_URL,
@@ -223,6 +229,31 @@ class UkphApi:
         params = {"lat": round(lat, 2), "long": round(lon, 2), "dist": radius_km}
         return parse_floods(await self._get(EA_FLOODS_URL, params))
 
+    async def river_stations(self, lat: float, lon: float, radius_km: float) -> tuple[list[dict[str, Any]], int]:
+        params = {"lat": round(lat, 2), "long": round(lon, 2), "dist": radius_km,
+                  "parameter": "level", "_view": "full", "_limit": 1000}
+        # Ask the EA for a slightly wider area, then trim to the true distance.
+        params["dist"] = radius_km * 1.3
+        return parse_river_stations(await self._get(EA_STATIONS_URL, params), lat, lon, radius_km)
+
+    async def river_levels(self, stations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Latest reading for each station, a few requests at a time to go easy on the EA."""
+        sem = asyncio.Semaphore(RIVER_FETCH_CONCURRENCY)
+
+        async def one(station: dict[str, Any]) -> dict[str, Any]:
+            async with sem:
+                try:
+                    data = await self._get(EA_MEASURE_READINGS_URL.format(measure=station["measure"]),
+                                           {"_sorted": "", "_limit": 8})
+                except ApiError:
+                    data = {}  # one bad gauge shouldn't sink the rest
+                return parse_river_readings(data, station)
+
+        results = await asyncio.gather(*(one(s) for s in stations))
+        if stations and all(r["level"] is None for r in results):
+            raise ApiError("No river readings could be fetched")
+        return results
+
     async def _category(self) -> int:
         if self._news_category is None:
             try:
@@ -240,3 +271,92 @@ class UkphApi:
             "_fields": "title,link,date_gmt,excerpt,meta.ukph_brief,meta.ukph_stories,meta.ukph_schema_version",
         }
         return parse_news(await self._get(f"{UKPH_API}/posts", params))
+
+
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+    dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 6371 * 2 * asin(sqrt(a))
+
+
+def parse_river_stations(
+    data: dict[str, Any], lat: float, lon: float, radius_km: float | None = None
+) -> tuple[list[dict[str, Any]], int]:
+    """Usable level stations nearest first, capped. Returns (stations, total usable before the cap).
+
+    Usable = has a river name, a typical range and a GOV.UK page (backup/intake gauges have none of these).
+    """
+    items = data.get("items")
+    if not isinstance(items, list):
+        raise ApiError("EA stations response has no items list")
+    usable = []
+    for s in items:
+        scale = s.get("stageScale")
+        if not (s.get("riverName") and s.get("RLOIid") and isinstance(scale, dict)):
+            continue
+        low, high = scale.get("typicalRangeLow"), scale.get("typicalRangeHigh")
+        if low is None or high is None or s.get("lat") is None or s.get("long") is None:
+            continue
+        measures = s.get("measures") or []
+        measures = measures if isinstance(measures, list) else [measures]
+        ids = [m["@id"].rsplit("/", 1)[-1] for m in measures
+               if isinstance(m, dict) and m.get("parameter") == "level" and m.get("@id")]
+        # The typical range is in stage terms, so prefer the stage-datum measure.
+        measure = next((m for m in ids if m.endswith("-mASD")), ids[0] if ids else None)
+        if not measure:
+            continue
+        rloi = str(s["RLOIid"]).split(",")[0].strip()
+        label = s.get("label") or s.get("town") or s["stationReference"]
+        # "Bourn Brook at Bourn Brook" reads badly, so use the town when the station is named after its river.
+        place = (s.get("town") or label) if label.lower() in s["riverName"].lower() else label
+        usable.append({
+            "ref": s["stationReference"],
+            "station": place,
+            "town": s.get("town"),
+            "river": s["riverName"],
+            "measure": measure,
+            "distance_km": round(_distance_km(lat, lon, float(s["lat"]), float(s["long"])), 1),
+            "typical_low": float(low),
+            "typical_high": float(high),
+            "highest_recent": (scale.get("highestRecent") or {}).get("value"),
+            "max_on_record": (scale.get("maxOnRecord") or {}).get("value"),
+            "link": EA_STATION_PAGE.format(rloi=rloi),
+        })
+    # The EA's own distance filter is looser than true distance (it returned 12.5 km for a 10 km search).
+    if radius_km is not None:
+        usable = [u for u in usable if u["distance_km"] <= radius_km]
+    usable.sort(key=lambda x: x["distance_km"])
+    return usable[:MAX_RIVER_STATIONS], len(usable)
+
+
+def river_status(level: float, station: dict[str, Any]) -> str:
+    if level < station["typical_low"]:
+        return "low"
+    if level <= station["typical_high"]:
+        return "normal"
+    recent = station.get("highest_recent")
+    return "very_high" if recent is not None and level > recent else "high"
+
+
+def parse_river_readings(data: dict[str, Any], station: dict[str, Any]) -> dict[str, Any]:
+    """Latest level, status and one-hour trend for a station, from its newest readings."""
+    readings = []
+    for r in data.get("items") or []:
+        try:
+            readings.append((datetime.fromisoformat(r["dateTime"].replace("Z", "+00:00")), float(r["value"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not readings:
+        return {**station, "level": None, "status": None, "trend": None, "change_1h_m": None, "reading_time": None}
+    readings.sort(reverse=True)
+    when, level = readings[0]
+    # Compare against the reading closest to an hour earlier.
+    older = min(readings[1:], key=lambda r: abs((when - r[0]).total_seconds() - 3600), default=None)
+    change = round(level - older[1], 3) if older else None
+    trend = None
+    if change is not None:
+        trend = ("rising" if change > RIVER_TREND_THRESHOLD_M
+                 else "falling" if change < -RIVER_TREND_THRESHOLD_M else "steady")
+    return {**station, "level": level, "status": river_status(level, station), "trend": trend,
+            "change_1h_m": change, "reading_time": when}

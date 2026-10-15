@@ -5,6 +5,9 @@ import sys
 
 from custom_components.ukph_alerts.api import (
     add_utm,
+    parse_river_readings,
+    parse_river_stations,
+    river_status,
     parse_floods,
     parse_met_office,
     parse_met_office_time,
@@ -104,6 +107,40 @@ def test_guess_region():
     assert not wrong, wrong
 
 
+def test_river_stations():
+    data = {"items": [
+        {"stationReference": "A", "label": "St Neots", "riverName": "River Great Ouse", "RLOIid": "6174",
+         "lat": 52.23, "long": -0.27, "stageScale": {"typicalRangeLow": 0.82, "typicalRangeHigh": 1.1,
+                                                    "highestRecent": {"value": 1.53}},
+         "measures": [{"@id": "x/A-level-stage-i-15_min-m", "parameter": "level"},
+                      {"@id": "x/A-level-stage-i-15_min-mASD", "parameter": "level"}]},
+        {"stationReference": "B", "label": "Backup", "lat": 52.2, "long": -0.2,  # no river/RLOI: skipped
+         "measures": {"@id": "x/B-level-stage-i-15_min-mAOD", "parameter": "level"}},
+        {"stationReference": "C", "label": "Far", "riverName": "Kym", "RLOIid": "1", "lat": 52.6, "long": -0.2,
+         "stageScale": {"typicalRangeLow": 0.1, "typicalRangeHigh": 1.3},
+         "measures": {"@id": "x/C-level-stage-i-15_min-mASD", "parameter": "level"}},
+    ]}
+    stations, total = parse_river_stations(data, 52.2, -0.2)
+    assert total == 2 and [s["ref"] for s in stations] == ["A", "C"]  # nearest first, backup skipped
+    a = stations[0]
+    assert a["measure"] == "A-level-stage-i-15_min-mASD"  # stage datum preferred
+    assert a["link"] == "https://check-for-flooding.service.gov.uk/station/6174"
+    assert river_status(0.5, a) == "low" and river_status(1.0, a) == "normal"
+    assert river_status(1.2, a) == "high" and river_status(1.6, a) == "very_high"
+    near, n = parse_river_stations(data, 52.2, -0.2, radius_km=10)
+    assert n == 1 and [s["ref"] for s in near] == ["A"]  # C is ~44 km away
+
+
+def test_river_trend():
+    st = {"typical_low": 0.8, "typical_high": 1.1, "highest_recent": 1.5}
+    t = ["2026-10-15T01:15:00Z", "2026-10-15T01:00:00Z", "2026-10-15T00:45:00Z", "2026-10-15T00:30:00Z", "2026-10-15T00:15:00Z"]
+    r = parse_river_readings({"items": [{"dateTime": d, "value": v} for d, v in zip(t, [0.859, 0.854, 0.849, 0.844, 0.837])]}, st)
+    assert r["level"] == 0.859 and r["trend"] == "rising" and r["change_1h_m"] == 0.022
+    r = parse_river_readings({"items": [{"dateTime": d, "value": 0.9} for d in t]}, st)
+    assert r["trend"] == "steady" and r["status"] == "normal"
+    assert parse_river_readings({"items": []}, st)["level"] is None
+
+
 async def live():
     import aiohttp
     from custom_components.ukph_alerts.api import UkphApi
@@ -115,6 +152,9 @@ async def live():
         n = await api.news()
         print("news:", n["title"], n["link"], n["published"], len(n["brief"]), len(n["stories"]))
         print("category id:", api._news_category)
+        st, total = await api.river_stations(52.2, -0.2, 10)
+        lv = await api.river_levels(st)
+        print("rivers:", total, "usable;", [(x["station"], x["level"], x["status"], x["trend"]) for x in lv])
 
 
 if __name__ == "__main__":

@@ -679,7 +679,9 @@ def _int(v: Any) -> int | None:
 def parse_power_ukpn(data: dict[str, Any]) -> list[dict[str, Any]]:
     out = []
     for r in data.get("results") or []:
-        if r.get("restoreddatetime"):
+        # "Multiple" rows are map-cluster markers over incidents listed separately (often already restored),
+        # with a fresh MULT-<uuid> id on every refresh: treating them as cuts sends a new alert each poll.
+        if r.get("restoreddatetime") or (r.get("powercuttype") or "").lower() in ("multiple", "restored"):
             continue
         g = r.get("geopoint") or {}
         planned = (r.get("powercuttype") or "").lower() == "planned"

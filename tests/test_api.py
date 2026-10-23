@@ -16,6 +16,7 @@ from custom_components.ukph_alerts.api import (
     parse_met_office,
     parse_met_office_time,
     parse_news,
+    parse_power_ukpn,
 )
 
 MO_SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
@@ -183,6 +184,19 @@ def test_sepa_floods():
 def test_irish_grid():
     lat, lon = irish_grid_to_wgs84(333500, 373500)  # central Belfast
     assert abs(lat - 54.6) < 0.02 and abs(lon + 5.93) < 0.02
+
+
+def test_ukpn_skips_cluster_and_restored():
+    data = {"results": [
+        {"incidentreference": "MULT-4c418cca", "powercuttype": "Multiple", "creationdatetime": "0001-01-01T00:00:00",
+         "nocustomeraffected": 0, "restoredincidents": "INCD-640707-Z;INCD-640761-Z",
+         "geopoint": {"lon": -0.18663, "lat": 52.23487}},
+        {"incidentreference": "INCD-640707-Z", "powercuttype": "Restored", "restoreddatetime": "2026-10-23T20:39:12",
+         "geopoint": {"lon": -0.10871, "lat": 52.23004}},
+        {"incidentreference": "INCD-1", "powercuttype": "Unplanned", "nocustomeraffected": 40,
+         "geopoint": {"lon": -0.1, "lat": 52.2}},
+    ]}
+    assert [c["id"] for c in parse_power_ukpn(data)] == ["INCD-1"]
 
 
 async def live():

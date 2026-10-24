@@ -142,6 +142,35 @@ async def run():
         e.runtime_data.threat.data = {"level": "substantial", "summary": "s", "link": "l"}
         await a._evaluate()
         assert len(sent) == 1 and "lowered to SUBSTANTIAL" in sent[0]["title"] and events[-1]["change"] == "downgrade"
+
+        # SEPA rivers have a state but no level/range: state-only message, and other alerts still go out
+        FakeStore.saved = None
+        sepa = {"ref": "sepa-1", "river": "Tweed", "station": "Peebles", "status": "high", "trend": None,
+                "level": None, "typical_low": None, "typical_high": None, "link": "https://sepa", "source": "SEPA"}
+        a, e, sent, _ = make(met=[W("amber")], rivers=[sepa], opts={"alert_rivers": "high"})
+        await a.async_start()
+        assert len(sent) == 2
+        river = next(s for s in sent if "Tweed" in s["title"])
+        assert river["message"] == "Tweed at Peebles: high (SEPA)."
+
+        # a malformed record is skipped on its own; it isn't mistaken for cleared, and other items still alert
+        FakeStore.saved = None
+        good = {"id": "f1", "severity": "flood_warning", "description": "Ouse", "link": "l"}
+        a, e, sent, _ = make(met=[W("amber")], floods=[good])
+        await a.async_start()
+        assert len(sent) == 2
+        e.runtime_data.floods.data = [{"id": "f1", "description": "Ouse"}, {"id": "f2", "severity": "flood_warning",
+                                                                           "description": "Cam"}]
+        await a._evaluate()
+        assert len(sent) == 3 and "Cam" in sent[-1]["title"]  # f1 unreadable: no false all-clear
+        assert "flood:f1" in a._state["notified"]
+
+        # a source that blows up entirely doesn't stop the others
+        FakeStore.saved = None
+        a, e, sent, _ = make(met=[W("amber")])
+        e.runtime_data.grid.data = "broken"  # .get() on a str raises AttributeError
+        await a.async_start()
+        assert len(sent) == 1
     print("ok alerts")
 
 

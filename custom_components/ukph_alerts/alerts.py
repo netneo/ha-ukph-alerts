@@ -90,81 +90,124 @@ class UkphAlerter:
 
     # --- current items per source -------------------------------------------------------------
 
-    def _items(self, kind: str, coordinator: UkphCoordinator) -> list[dict[str, Any]] | None:
-        """None if the source failed last time, so its warnings aren't mistaken for cleared."""
+    def _items(self, kind: str, coordinator: UkphCoordinator) -> tuple[list[dict[str, Any]], bool] | None:
+        """(items, complete), or None if the source failed last time, so its warnings aren't mistaken for cleared.
+
+        Each item is built on its own: one malformed record is logged and skipped rather than taking the
+        other alerts down with it. complete is False when anything was skipped.
+        """
         if not coordinator.last_update_success or coordinator.data is None:
             return None
-        if kind == "met":
-            return [{
-                "key": f"met:{w.get('id') or w.get('title')}",
-                "rank": MET_RANK.get(w.get("level") or "", 0),
-                "level": w.get("level"),
-                "title": f"⚠️ {(w.get('level') or 'Weather').capitalize()} warning: {w.get('hazard') or w.get('title')}",
-                "message": " · ".join(filter(None, [
-                    f"{_when(w.get('valid_from'))} to {_when(w.get('valid_to'))}" if w.get("valid_from") else "",
-                    ", ".join(w.get("areas") or []),
-                ])) or (w.get("summary") or ""),
-                "link": w.get("link") or PANEL_LINK,
-                "clear": f"Met Office {w.get('level') or ''} warning for {w.get('hazard') or 'weather'} has ended.",
-            } for w in coordinator.data]
-        if kind == "flood":
-            return [{
-                "key": f"flood:{w.get('id')}",
-                "rank": FLOOD_RANK.get(w["severity"], 0),
-                "level": w["severity"],
-                "title": f"🌊 {w['severity'].replace('_', ' ').capitalize()}: {w.get('description')}",
-                "message": (w.get("message") or w.get("river_or_sea") or "")[:300],
-                "link": w.get("link") or PANEL_LINK,
-                "clear": f"{w['severity'].replace('_', ' ').capitalize()} for {w.get('description')} is no longer in force.",
-            } for w in coordinator.data]
-        if kind == "power":
-            return [{
-                "key": f"power:{c['id']}",
-                "rank": 1,
-                "level": "power_cut",
-                "distance": c["distance_km"],
-                "title": f"🔌 Power cut {c['distance_km']} km away",
-                "message": " · ".join(filter(None, [
-                    f"{c['customers']} customers off" if c.get("customers") else "",
-                    f"{c['network']}",
-                    f"estimated back {_when(c['estimated_restore'])}" if c.get("estimated_restore") else "",
-                    (c.get("cause") or "")[:160],
-                ])),
-                "link": c.get("link") or PANEL_LINK,
-                "clear": f"The power cut {c['distance_km']} km away is no longer listed by {c['network']}.",
-            } for c in coordinator.data if not c.get("planned")]
-        if kind == "health":
-            return [{
-                "key": f"health:{k}:{h['region']}",  # must start "health:" so the all-clear sweep finds it
-                "rank": HEALTH_RANK[h["level"]],
-                "level": h["level"],
-                "title": f"{'🥵' if k == 'heat' else '🥶'} {h['level'].capitalize()} {k}-health alert: {h['region']}",
-                "message": (h.get("summary") or "")[:300],
-                "link": h.get("link") or PANEL_LINK,
-                "clear": f"The {k}-health alert for {h['region']} has ended.",
-            } for k, h in coordinator.data.items() if h and h["level"] in HEALTH_RANK]
-        if kind == "grid":
-            return [{
-                "key": f"grid:{n['type']}:{n['start'].isoformat() if hasattr(n['start'], 'isoformat') else n['start']}",
-                "rank": GRID_RANK[n["status"]],
-                "level": n["status"],
-                "title": f"⚡ Grid notice: {n['type']}",
-                "message": n["summary"] + ". NESO uses these to get more power onto the grid; it doesn't by itself "
-                           "mean power cuts are expected.",
-                "link": PANEL_LINK,
-                "clear": f"{n['summary']}: ended or cancelled.",
-            } for n in coordinator.data.get("active", []) if n["status"] in GRID_RANK]
-        return [{
+        build, source = {
+            "met": (self._met_item, lambda d: d),
+            "flood": (self._flood_item, lambda d: d),
+            "power": (self._power_item, lambda d: [c for c in d if not c.get("planned")]),
+            "health": (self._health_item,
+                       lambda d: [(k, h) for k, h in d.items() if h and h.get("level") in HEALTH_RANK]),
+            "grid": (self._grid_item, lambda d: [n for n in d.get("active", []) if n.get("status") in GRID_RANK]),
+            "river": (self._river_item,
+                      lambda d: [s for s in d.get("stations", []) if s.get("status") in RIVER_RANK]),
+        }[kind]
+        items, complete = [], True
+        for record in source(coordinator.data):
+            try:
+                items.append(build(record))
+            except (KeyError, TypeError, ValueError, AttributeError, IndexError) as err:
+                complete = False
+                LOGGER.warning("Skipping a %s alert that couldn't be read (%r): %r", kind, err, record)
+        return items, complete
+
+    @staticmethod
+    def _met_item(w: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "key": f"met:{w.get('id') or w.get('title')}",
+            "rank": MET_RANK.get(w.get("level") or "", 0),
+            "level": w.get("level"),
+            "title": f"⚠️ {(w.get('level') or 'Weather').capitalize()} warning: {w.get('hazard') or w.get('title')}",
+            "message": " · ".join(filter(None, [
+                f"{_when(w.get('valid_from'))} to {_when(w.get('valid_to'))}" if w.get("valid_from") else "",
+                ", ".join(w.get("areas") or []),
+            ])) or (w.get("summary") or ""),
+            "link": w.get("link") or PANEL_LINK,
+            "clear": f"Met Office {w.get('level') or ''} warning for {w.get('hazard') or 'weather'} has ended.",
+        }
+
+    @staticmethod
+    def _flood_item(w: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "key": f"flood:{w.get('id')}",
+            "rank": FLOOD_RANK.get(w["severity"], 0),
+            "level": w["severity"],
+            "title": f"🌊 {w['severity'].replace('_', ' ').capitalize()}: {w.get('description')}",
+            "message": (w.get("message") or w.get("river_or_sea") or "")[:300],
+            "link": w.get("link") or PANEL_LINK,
+            "clear": f"{w['severity'].replace('_', ' ').capitalize()} for {w.get('description')} is no longer in force.",
+        }
+
+    @staticmethod
+    def _power_item(c: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "key": f"power:{c['id']}",
+            "rank": 1,
+            "level": "power_cut",
+            "distance": c["distance_km"],
+            "title": f"🔌 Power cut {c['distance_km']} km away",
+            "message": " · ".join(filter(None, [
+                f"{c['customers']} customers off" if c.get("customers") else "",
+                f"{c['network']}",
+                f"estimated back {_when(c['estimated_restore'])}" if c.get("estimated_restore") else "",
+                (c.get("cause") or "")[:160],
+            ])),
+            "link": c.get("link") or PANEL_LINK,
+            "clear": f"The power cut {c['distance_km']} km away is no longer listed by {c['network']}.",
+        }
+
+    @staticmethod
+    def _health_item(kh: tuple[str, dict[str, Any]]) -> dict[str, Any]:
+        k, h = kh
+        return {
+            "key": f"health:{k}:{h['region']}",  # must start "health:" so the all-clear sweep finds it
+            "rank": HEALTH_RANK[h["level"]],
+            "level": h["level"],
+            "title": f"{'🥵' if k == 'heat' else '🥶'} {h['level'].capitalize()} {k}-health alert: {h['region']}",
+            "message": (h.get("summary") or "")[:300],
+            "link": h.get("link") or PANEL_LINK,
+            "clear": f"The {k}-health alert for {h['region']} has ended.",
+        }
+
+    @staticmethod
+    def _grid_item(n: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "key": f"grid:{n['type']}:{n['start'].isoformat() if hasattr(n['start'], 'isoformat') else n['start']}",
+            "rank": GRID_RANK[n["status"]],
+            "level": n["status"],
+            "title": f"⚡ Grid notice: {n['type']}",
+            "message": n["summary"] + ". NESO uses these to get more power onto the grid; it doesn't by itself "
+                       "mean power cuts are expected.",
+            "link": PANEL_LINK,
+            "clear": f"{n['summary']}: ended or cancelled.",
+        }
+
+    @staticmethod
+    def _river_item(s: dict[str, Any]) -> dict[str, Any]:
+        state = "very high" if s["status"] == "very_high" else "high"
+        # SEPA stations only give a state: no level in metres, typical range or trend.
+        parts = []
+        if s.get("level") is not None:
+            parts.append(f"{s['level']:.2f} m, {s.get('trend') or 'trend unknown'}.")
+        if s.get("typical_low") is not None and s.get("typical_high") is not None:
+            parts.append(f"Normal range {s['typical_low']:.2f}–{s['typical_high']:.2f} m.")
+        return {
             "key": f"river:{s['ref']}",
             "rank": RIVER_RANK[s["status"]],
             "level": s["status"],
             "rising": s.get("trend") == "rising",
-            "title": f"🏞️ {s['river']} at {s['station']}: {'very high' if s['status'] == 'very_high' else 'high'}",
-            "message": f"{s['level']:.2f} m, {s.get('trend') or 'trend unknown'}. Normal range "
-                       f"{s['typical_low']:.2f}–{s['typical_high']:.2f} m.",
+            "title": f"🏞️ {s['river']} at {s['station']}: {state}",
+            "message": " ".join(parts) or f"{s['river']} at {s['station']}: {state}"
+                                           + (f" ({s['source']})." if s.get("source") else "."),
             "link": s.get("link") or PANEL_LINK,
             "clear": f"{s['river']} at {s['station']} is back below its alert level.",
-        } for s in coordinator.data.get("stations", []) if s.get("status") in RIVER_RANK]
+        }
 
     def _meets(self, kind: str, item: dict[str, Any], already_notified: bool) -> bool:
         if kind == "met":
@@ -187,47 +230,64 @@ class UkphAlerter:
 
     # --- evaluation ---------------------------------------------------------------------------
 
+    def _diff(self, kind: str, coordinator: UkphCoordinator, outgoing: dict[str, list[dict[str, Any]]],
+              clears: list[dict[str, Any]]) -> bool:
+        """Compare one source with what was seen/notified; queue sends and clears. True if state changed."""
+        seen, notified = self._state["seen"], self._state["notified"]
+        changed = False
+        result = self._items(kind, coordinator)
+        if result is None:
+            return False
+        items, complete = result
+        current = {i["key"]: i for i in items}
+        for key, item in current.items():
+            before = seen.get(key)
+            if before is None or item["rank"] > before["rank"]:
+                self.hass.bus.async_fire(EVENT_NEW_WARNING, {
+                    "type": {"met": "met_office", "flood": "flood", "river": "river", "power": "power_cut",
+                             "health": "health", "grid": "grid"}[kind],
+                    "change": "new" if before is None else "upgrade",
+                    "level": item["level"], "title": item["title"], "link": item["link"],
+                })
+            if before is None or before["rank"] != item["rank"]:
+                seen[key] = {"rank": item["rank"], "clear": item["clear"]}
+                changed = True
+            was = notified.get(key)
+            if self._meets(kind, item, was is not None):
+                if was is None or item["rank"] > was["rank"]:
+                    outgoing.setdefault(kind, []).append(item)
+                    notified[key] = {"rank": item["rank"], "clear": item["clear"]}
+                    changed = True
+            elif was is not None:
+                clears.append({"key": key, "message": item["clear"]})
+                del notified[key]
+                changed = True
+        if not complete:
+            return changed
+        for key in [k for k in seen if k.startswith(f"{kind}:") and k not in current]:
+            if key in notified:
+                clears.append({"key": key, "message": notified.pop(key)["clear"]})
+            del seen[key]
+            changed = True
+        return changed
+
     async def _evaluate(self) -> None:
         data = self.entry.runtime_data
-        seen, notified = self._state["seen"], self._state["notified"]
         outgoing: dict[str, list[dict[str, Any]]] = {}
         clears: list[dict[str, Any]] = []
         changed = False
 
-        await self._threat(data.threat)
+        try:
+            await self._threat(data.threat)
+        except Exception:  # noqa: BLE001 - never let one source stop the others
+            LOGGER.exception("Threat-level alert check failed")
         for kind, coordinator in (("met", data.met_office), ("flood", data.floods), ("river", data.rivers),
                                   ("power", data.power), ("health", data.health), ("grid", data.grid)):
-            items = self._items(kind, coordinator)
-            if items is None:
-                continue
-            current = {i["key"]: i for i in items}
-            for key, item in current.items():
-                before = seen.get(key)
-                if before is None or item["rank"] > before["rank"]:
-                    self.hass.bus.async_fire(EVENT_NEW_WARNING, {
-                        "type": {"met": "met_office", "flood": "flood", "river": "river", "power": "power_cut",
-                                 "health": "health", "grid": "grid"}[kind],
-                        "change": "new" if before is None else "upgrade",
-                        "level": item["level"], "title": item["title"], "link": item["link"],
-                    })
-                if before is None or before["rank"] != item["rank"]:
-                    seen[key] = {"rank": item["rank"], "clear": item["clear"]}
-                    changed = True
-                was = notified.get(key)
-                if self._meets(kind, item, was is not None):
-                    if was is None or item["rank"] > was["rank"]:
-                        outgoing.setdefault(kind, []).append(item)
-                        notified[key] = {"rank": item["rank"], "clear": item["clear"]}
-                        changed = True
-                elif was is not None:
-                    clears.append({"key": key, "message": item["clear"]})
-                    del notified[key]
-                    changed = True
-            for key in [k for k in seen if k.startswith(f"{kind}:") and k not in current]:
-                if key in notified:
-                    clears.append({"key": key, "message": notified.pop(key)["clear"]})
-                del seen[key]
-                changed = True
+            try:
+                changed |= self._diff(kind, coordinator, outgoing, clears)
+            except Exception:  # noqa: BLE001 - never let one source stop the others
+                LOGGER.exception("%s alert check failed", kind)
+                changed = True  # it may have updated some state before failing
 
         for kind, items in outgoing.items():
             if len(items) > BATCH_LIMIT:

@@ -5,7 +5,7 @@ import logging
 
 DOMAIN = "ukph_alerts"
 NAME = "UK Prepper Hub Alerts"
-VERSION = "0.4.1"
+VERSION = "0.4.3"
 LOGGER = logging.getLogger(__package__)
 
 USER_AGENT = f"UKPH-Alerts-HomeAssistant/{VERSION}"

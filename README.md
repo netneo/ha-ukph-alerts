@@ -67,13 +67,13 @@ A Home Assistant integration that brings UK hazard alerts and UK Prepper Hub's d
 
 ### Option A: through HACS (recommended)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=netneo&repository=ha-ukph-alerts&category=integration)
+
+Click the button above to open it straight in HACS, or:
+
 1. Open **HACS** in the Home Assistant sidebar.
-2. Click the **⋮** menu (top right) and choose **Custom repositories**.
-3. In **Repository**, paste:
-   `https://github.com/netneo/ha-ukph-alerts`
-   Set **Type** to **Integration**, then click **Add**.
-4. Close that box, search HACS for **UK Prepper Hub Alerts**, open it and click **Download**, then **Download** again to confirm.
-5. **Restart Home Assistant** (**Settings → System → ⏻ top right → Restart Home Assistant**).
+2. Search for **UK Prepper Hub Alerts**, open it and click **Download**, then **Download** again to confirm.
+3. **Restart Home Assistant** (**Settings → System → ⏻ top right → Restart Home Assistant**).
 
 ### Option B: manual install
 

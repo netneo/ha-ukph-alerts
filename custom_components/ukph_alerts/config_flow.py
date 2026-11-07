@@ -81,9 +81,14 @@ RIVER_LEVELS = [("off", "Off"), ("high", "Above its normal range"), ("very_high"
 def phone_services(hass: HomeAssistant) -> list[SelectOptionDict]:
     """The Home Assistant app's notify services, labelled with the phone's own name where we can find it."""
     services = sorted(s for s in hass.services.async_services().get("notify", {}) if s.startswith("mobile_app_"))
+    # Look phones up through the mobile_app config entries: `registry.devices` as a
+    # mapping is deprecated (breaks in 2027.9), and iterating it only yields entries
+    # on 2026.11+, so this helper is the one route that works on every supported HA.
+    registry = dr.async_get(hass)
     names = {
         f"mobile_app_{slugify(d.name_by_user or d.name or '')}": d.name_by_user or d.name
-        for d in dr.async_get(hass).devices.values()
+        for entry in hass.config_entries.async_entries("mobile_app")
+        for d in dr.async_entries_for_config_entry(registry, entry.entry_id)
         if any(i[0] == "mobile_app" for i in d.identifiers)
     }
     return [SelectOptionDict(value=s, label=names.get(s) or s.removeprefix("mobile_app_").replace("_", " ").title())
